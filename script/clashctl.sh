@@ -362,11 +362,11 @@ function clashui() {
 }
 
 function clashtui() {
-    local clashctl_bin="${MIHOMO_BASE_DIR}/bin/clashctl-tui"
+    local clash_tui_bin="${MIHOMO_TUI_BIN}"
 
-    # 懒加载: 首次使用时下载 TUI 工具
-    if [ ! -x "$clashctl_bin" ]; then
-        _download_tui || return 1
+    # 懒加载: 首次使用时构建内置 TUI
+    if [ ! -x "$clash_tui_bin" ]; then
+        _build_clash_tui || return 1
     fi
 
     # 确保 mihomo 运行
@@ -388,15 +388,12 @@ function clashtui() {
     # 生成配置并启动 TUI
     local endpoint="http://127.0.0.1:${UI_PORT}"
     local api_secret=$("$BIN_YQ" '.secret // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
-    local config_file="${MIHOMO_BASE_DIR}/config/clashctl.ron"
-
-    _generate_clashctl_config "mihomo-local" "$endpoint" "$api_secret" > "$config_file" || {
-        _failcat "生成配置失败"
-        return 1
-    }
 
     _okcat "正在连接 $endpoint ..."
-    "$clashctl_bin" --config-path "$config_file" tui
+    "$clash_tui_bin" \
+        --endpoint "$endpoint" \
+        --secret "$api_secret" \
+        --mixin-config "$MIHOMO_CONFIG_MIXIN"
 }
 
 _merge_config_restart() {

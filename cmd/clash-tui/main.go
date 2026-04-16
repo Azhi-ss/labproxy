@@ -1,0 +1,40 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"clash-for-lab/internal/config"
+	"clash-for-lab/internal/mihomo"
+	"clash-for-lab/internal/tui"
+)
+
+func main() {
+	var (
+		endpoint    = flag.String("endpoint", "", "mihomo controller endpoint")
+		secret      = flag.String("secret", "", "mihomo controller secret")
+		mixinConfig = flag.String("mixin-config", "", "path to mixin config for system-proxy status")
+	)
+	flag.Parse()
+
+	if *endpoint == "" {
+		fmt.Fprintln(os.Stderr, "missing required --endpoint")
+		os.Exit(1)
+	}
+
+	systemProxyEnabled, err := config.ReadSystemProxyEnabled(*mixinConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read mixin config: %v\n", err)
+		os.Exit(1)
+	}
+
+	app := tui.NewApp(mihomo.NewClient(*endpoint, *secret), tui.Options{
+		Endpoint:           *endpoint,
+		SystemProxyEnabled: systemProxyEnabled,
+	})
+	if err := app.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

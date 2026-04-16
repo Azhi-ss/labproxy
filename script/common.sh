@@ -31,6 +31,8 @@ MIHOMO_CONFIG_RAW_BAK="${MIHOMO_CONFIG_RAW}.bak"
 MIHOMO_CONFIG_MIXIN="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
 MIHOMO_CONFIG_RUNTIME="${MIHOMO_BASE_DIR}/runtime.yaml"
 MIHOMO_UPDATE_LOG="${MIHOMO_BASE_DIR}/mihomoctl.log"
+MIHOMO_TUI_SRC_DIR="${MIHOMO_BASE_DIR}/tui-src"
+MIHOMO_TUI_BIN="${MIHOMO_BASE_DIR}/bin/clash-tui"
 
 # Legacy compatibility - keep CLASH_* variables pointing to new locations
 CLASH_BASE_DIR="$MIHOMO_BASE_DIR"
@@ -41,6 +43,8 @@ CLASH_CONFIG_RAW_BAK="$MIHOMO_CONFIG_RAW_BAK"
 CLASH_CONFIG_MIXIN="$MIHOMO_CONFIG_MIXIN"
 CLASH_CONFIG_RUNTIME="$MIHOMO_CONFIG_RUNTIME"
 CLASH_UPDATE_LOG="$MIHOMO_UPDATE_LOG"
+CLASH_TUI_SRC_DIR="$MIHOMO_TUI_SRC_DIR"
+CLASH_TUI_BIN="$MIHOMO_TUI_BIN"
 
 _is_dir_writable() {
     local dir=$1
@@ -632,34 +636,33 @@ _download_raw_config() {
     return 1
 }
 
-# 下载 clashctl-tui (懒加载)
-_download_tui() {
-    local dest="${MIHOMO_BASE_DIR}/bin/clashctl-tui"
-    local url="https://github.com/saladday/clashctl/releases/latest/download/clashctl-Linux"
-    local proxy_url="${URL_GH_PROXY}/${url}"
+_build_clash_tui() {
+    local source_dir="${1:-$MIHOMO_TUI_SRC_DIR}"
+    local dest="${2:-$MIHOMO_TUI_BIN}"
+
+    command -v go >/dev/null 2>&1 || {
+        _failcat "未检测到 Go，无法构建内置 TUI"
+        return 1
+    }
+
+    [ -f "$source_dir/go.mod" ] || {
+        _failcat "未找到内置 TUI 源码：$source_dir"
+        return 1
+    }
 
     mkdir -p "$(dirname "$dest")"
+    _okcat "正在构建内置 TUI..."
+    (
+        cd "$source_dir" &&
+            GO111MODULE=on CGO_ENABLED=0 go build -o "$dest" ./cmd/clash-tui
+    ) || {
+        rm -f "$dest"
+        _failcat "构建内置 TUI 失败"
+        return 1
+    }
 
-    _okcat "首次使用 TUI，正在下载 clashctl-tui..."
-    _okcat "尝试代理下载: ${proxy_url}"
-
-    # 优先尝试代理下载
-    if curl --progress-bar --show-error --fail --connect-timeout 10 --location --output "$dest" "$proxy_url" 2>/dev/null; then
-        chmod +x "$dest"
-        _okcat "下载完成"
-        return 0
-    fi
-
-    _okcat "代理下载失败，尝试直连..."
-    if curl --progress-bar --show-error --fail --connect-timeout 10 --location --output "$dest" "$url" 2>/dev/null; then
-        chmod +x "$dest"
-        _okcat "下载完成"
-        return 0
-    fi
-
-    rm -f "$dest"
-    _failcat "下载失败，请检查网络或手动下载: $url"
-    return 1
+    chmod +x "$dest"
+    _okcat "内置 TUI 构建完成"
 }
 
 _download_convert_config() {

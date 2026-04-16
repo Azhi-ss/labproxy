@@ -122,6 +122,8 @@ MIHOMO_UPDATE_LOG="$TEST_ROOT/logs/mihomoctl.log"
 MIHOMO_CONFIG_URL="$TEST_ROOT/config/url"
 MIHOMO_PORT_STATE="$TEST_ROOT/config/ports.conf"
 MIHOMO_PORT_PREF="$TEST_ROOT/config/port.pref"
+MIHOMO_TUI_SRC_DIR="$TEST_ROOT/tui-src"
+MIHOMO_TUI_BIN="$TEST_ROOT/bin/clash-tui"
 BIN_YQ="$TEST_ROOT/bin/fake-yq"
 
 IS_RUNNING_RET=1
@@ -143,6 +145,7 @@ _verify_actual_ports() { echo verify_actual_ports >> "$ACTION_LOG"; MIXED_PORT=4
 _save_port_state() { echo "save_port_state:$1:$2:$3" >> "$ACTION_LOG"; }
 _set_system_proxy() { echo set_system_proxy >> "$ACTION_LOG"; }
 sleep() { echo "sleep:$1" >> "$ACTION_LOG"; }
+_is_bind() { return 0; }
 _download_config() {
     echo "download_config:$2" >> "$ACTION_LOG"
     [ "$DOWNLOAD_CONFIG_RET" -eq 0 ] || return 1
@@ -152,6 +155,14 @@ tun.enable: false
 allow-lan: false
 system-proxy.enable: false
 EOF
+}
+_build_clash_tui() {
+    echo build_clash_tui >> "$ACTION_LOG"
+    cat > "$MIHOMO_TUI_BIN" <<EOF
+#!/usr/bin/env bash
+echo "clash_tui:\$*" >> "$ACTION_LOG"
+EOF
+    chmod +x "$MIHOMO_TUI_BIN"
 }
 
 restart_count() {
@@ -195,7 +206,7 @@ EOF
 assert_file_contains() {
     local file=$1
     local expected=$2
-    if ! grep -Fq "$expected" "$file"; then
+    if ! grep -Fq -- "$expected" "$file"; then
         printf 'assertion failed: expected %s to contain %s\n' "$file" "$expected" >&2
         return 1
     fi
@@ -214,7 +225,7 @@ assert_equals() {
 assert_file_not_contains() {
     local file=$1
     local unexpected=$2
-    if [ -f "$file" ] && grep -Fq "$unexpected" "$file"; then
+    if [ -f "$file" ] && grep -Fq -- "$unexpected" "$file"; then
         printf 'assertion failed: expected %s to not contain %s\n' "$file" "$unexpected" >&2
         return 1
     fi
@@ -351,6 +362,18 @@ test_clashupdate_persists_url_logs_success_and_restarts() {
     assert_equals 1 "$(restart_count)" "restart count after clashupdate"
 }
 
+test_clashtui_builds_and_launches_first_party_binary() {
+    echo 'secret: super-secret' > "$MIHOMO_CONFIG_RUNTIME"
+    rm -f "$MIHOMO_TUI_BIN"
+
+    clashtui
+
+    assert_file_contains "$ACTION_LOG" "build_clash_tui"
+    assert_file_contains "$ACTION_LOG" "verify_actual_ports"
+    assert_file_contains "$ACTION_LOG" "clash_tui:--endpoint http://127.0.0.1:5555"
+    assert_file_contains "$ACTION_LOG" "--mixin-config $MIHOMO_CONFIG_MIXIN"
+}
+
 run_test "_merge_config_restart rebuilds runtime and restarts" test_merge_config_restart_rebuilds_and_restarts
 run_test "_merge_config_restart rolls back and skips restart on validation failure" test_merge_config_restart_rolls_back_and_skips_restart_on_validation_failure
 run_test "clashsecret updates mixin and restarts" test_clashsecret_updates_mixin_and_restarts
@@ -360,3 +383,4 @@ run_test "clashon builds runtime and finalizes startup" test_clashon_builds_runt
 run_test "clashon stops after start failure" test_clashon_stops_after_start_failure
 run_test "clashsubscribe saves url without immediate update" test_clashsubscribe_saves_url_without_immediate_update
 run_test "clashupdate persists url logs success and restarts" test_clashupdate_persists_url_logs_success_and_restarts
+run_test "clashtui builds and launches first-party binary" test_clashtui_builds_and_launches_first_party_binary

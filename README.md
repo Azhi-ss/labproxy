@@ -210,7 +210,7 @@ clash lan off
 clash tui
 ```
 
-TUI 界面基于 [clashctl](https://github.com/George-Miao/clashctl) 项目，首次使用时会自动下载。
+TUI 界面现在由本仓库内置维护，使用 Go 实现并通过 `clash tui` 启动。首次使用时会在本地构建内置 TUI（二进制输出到 `~/tools/mihomo/bin/clash-tui`）。
 
 功能特性：
 - 实时流量监控和图表展示
@@ -307,7 +307,7 @@ clash-for-lab/
 │   ├── mihomo              # 主程序
 │   ├── subconverter        # 订阅转换工具
 │   ├── yq                  # YAML 处理工具
-│   └── clashctl-tui        # TUI 界面 (首次使用时自动下载)
+│   └── clash-tui           # 内置 TUI 二进制 (首次使用时本地构建)
 ├── config/                 # 配置文件
 │   ├── config.yaml         # 主配置文件
 │   ├── mixin.yaml          # 自定义配置
@@ -358,7 +358,7 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 - [subconverter](https://github.com/tindy2013/subconverter) - 订阅转换工具
 - [zashboard](https://github.com/Zephyruso/zashboard) - Web 控制台界面
 - [yq](https://github.com/mikefarah/yq) - YAML 处理工具
-- [clashctl](https://github.com/George-Miao/clashctl) - TUI 交互式控制界面
+- 内置 Go TUI - 项目内维护的终端交互界面
 
 ### 参考资料
 
