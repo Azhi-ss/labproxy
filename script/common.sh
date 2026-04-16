@@ -169,14 +169,95 @@ _set_bin() {
 }
 _set_bin
 
+_rc_managed_line() {
+    printf 'source %s/common.sh && source %s/clashctl.sh && watch_proxy' "$MIHOMO_SCRIPT_DIR" "$MIHOMO_SCRIPT_DIR"
+}
+
+_rc_block_begin() {
+    printf '%s\n' '# >>> clash-for-lab >>>'
+}
+
+_rc_block_end() {
+    printf '%s\n' '# <<< clash-for-lab <<<'
+}
+
+_write_rc_block() {
+    local rc_file=$1
+    local tmp_file="${rc_file}.tmp.$$"
+    local begin_marker end_marker managed_line
+
+    begin_marker=$(_rc_block_begin)
+    end_marker=$(_rc_block_end)
+    managed_line=$(_rc_managed_line)
+
+    mkdir -p "$(dirname "$rc_file")"
+    touch "$rc_file"
+
+    awk \
+        -v begin_marker="$begin_marker" \
+        -v end_marker="$end_marker" \
+        -v managed_line="$managed_line" '
+        $0 == begin_marker {
+            in_block = 1
+            next
+        }
+        $0 == end_marker {
+            in_block = 0
+            next
+        }
+        in_block { next }
+        $0 == managed_line { next }
+        { print }
+        ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
+
+    [ -s "$rc_file" ] && printf '\n' >> "$rc_file"
+    printf '%s\n%s\n%s\n' "$begin_marker" "$managed_line" "$end_marker" >> "$rc_file"
+}
+
+_remove_rc_block() {
+    local rc_file=$1
+    local tmp_file="${rc_file}.tmp.$$"
+    local begin_marker end_marker managed_line
+
+    [ -n "$rc_file" ] || return 0
+    [ -f "$rc_file" ] || return 0
+
+    begin_marker=$(_rc_block_begin)
+    end_marker=$(_rc_block_end)
+    managed_line=$(_rc_managed_line)
+
+    awk \
+        -v begin_marker="$begin_marker" \
+        -v end_marker="$end_marker" \
+        -v managed_line="$managed_line" '
+        $0 == begin_marker {
+            in_block = 1
+            next
+        }
+        $0 == end_marker {
+            in_block = 0
+            next
+        }
+        in_block { next }
+        $0 == managed_line { next }
+        { print }
+        ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
+}
+
 _set_rc() {
-    [ "$1" = "unset" ] && {
-        sed -i "\|$MIHOMO_SCRIPT_DIR|d" "$SHELL_RC_BASH" "$SHELL_RC_ZSH" 2>/dev/null
+    local rc_file
+
+    [ "${1-}" = "unset" ] && {
+        for rc_file in "$SHELL_RC_BASH" "$SHELL_RC_ZSH"; do
+            _remove_rc_block "$rc_file"
+        done
         return
     }
 
-    echo "source $MIHOMO_SCRIPT_DIR/common.sh && source $MIHOMO_SCRIPT_DIR/clashctl.sh && watch_proxy" |
-        tee -a "$SHELL_RC_BASH" "$SHELL_RC_ZSH" >&/dev/null
+    for rc_file in "$SHELL_RC_BASH" "$SHELL_RC_ZSH"; do
+        [ -n "$rc_file" ] || continue
+        _write_rc_block "$rc_file"
+    done
 }
 
 # 默认集成、安装mihomo内核

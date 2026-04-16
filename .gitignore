@@ -64,3 +64,4 @@ subconverter
 .env
 .env.local
 .env.*.local
+.omx/

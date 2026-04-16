@@ -52,32 +52,14 @@ _unset_system_proxy() {
 }
 
 function clashon() {
-    # Ensure config directory exists
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_RUNTIME")"
-    
-    # Merge configuration using user permissions
-    "$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
-        "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
-    
-    # 检查端口冲突并显示分配结果
-    _resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME" true
-    
-    # Start mihomo process
-    if start_mihomo; then
-        # Wait for mihomo to fully start
-        sleep 2
-        
-        # 验证实际端口并设置端口变量
-        _verify_actual_ports
-        
-        # 保存端口状态并设置系统代理
-        _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
-        _set_system_proxy
-        _okcat '已开启代理环境'
-    else
+    _prepare_runtime_start || return 1
+
+    if ! _start_runtime; then
         _failcat '代理启动失败'
         return 1
     fi
+
+    _finalize_runtime_start
 }
 
 # 验证实际监听端口与配置是否一致
@@ -418,30 +400,143 @@ function clashtui() {
 }
 
 _merge_config_restart() {
+    _apply_runtime_change
+}
+
+_build_runtime_config() {
     # Use user-accessible temp directory instead of /tmp
     local backup="${MIHOMO_BASE_DIR}/config/runtime.backup"
-    
+
     # Ensure config directory exists
     mkdir -p "$(dirname "$backup")"
-    
+
     # Backup current runtime config
     cat "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null > "$backup"
-    
+
     # Merge configurations using user permissions
     "$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
-        "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
-    
+        "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME" || {
+        cat "$backup" > "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null
+        _error_quit "生成运行时配置失败"
+        return 1
+    }
+
     # Validate merged configuration
     _valid_config "$MIHOMO_CONFIG_RUNTIME" || {
         # Restore backup on validation failure
         cat "$backup" > "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null
         _error_quit "验证失败：请检查 Mixin 配置"
+        return 1
     }
-    
+
     # Clean up backup file
     rm -f "$backup"
-    
+}
+
+_prepare_runtime_start() {
+    _build_runtime_config || return 1
+    _resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME" true
+}
+
+_start_runtime() {
+    start_mihomo
+}
+
+_finalize_runtime_start() {
+    # Wait for mihomo to fully start
+    sleep 2
+
+    # 验证实际端口并设置端口变量
+    _verify_actual_ports
+
+    # 保存端口状态并设置系统代理
+    _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
+    _set_system_proxy
+    _okcat '已开启代理环境'
+}
+
+_restart_runtime() {
     clashrestart
+}
+
+_apply_runtime_change() {
+    _build_runtime_config
+    _restart_runtime
+}
+
+_update_mixin_config() {
+    local expression=$1
+    local error_message=$2
+
+    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
+    "$BIN_YQ" -i "$expression" "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
+        _failcat "$error_message"
+        return 1
+    }
+}
+
+_save_subscription_url() {
+    mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
+    echo "$1" > "$MIHOMO_CONFIG_URL"
+}
+
+_append_update_log() {
+    mkdir -p "$(dirname "$MIHOMO_UPDATE_LOG")"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] $1：$2" >> "${MIHOMO_UPDATE_LOG}"
+}
+
+_resolve_update_url() {
+    local url=$1
+
+    # 如果没有提供有效的订阅链接（url为空或者不是http开头），则使用默认配置文件
+    if [ "${url:0:4}" != "http" ]; then
+        _failcat "没有提供有效的订阅链接：使用 ${MIHOMO_CONFIG_RAW} 进行更新..."
+        url="file://$MIHOMO_CONFIG_RAW"
+    fi
+
+    printf '%s\n' "$url"
+}
+
+_enable_auto_subscription_update() {
+    local url=$1
+
+    # Persist URL for cron runs (cron executes `mihomoctl update`, which reads MIHOMO_CONFIG_URL).
+    [ "${url:0:4}" = "http" ] && _save_subscription_url "$url"
+
+    # Check if crontab entry already exists
+    crontab -l 2>/dev/null | grep -qs 'mihomoctl_auto_update' || {
+        # Add user-level crontab entry (every 2 days at midnight)
+        (crontab -l 2>/dev/null; echo "0 0 */2 * * $_SHELL -i -c 'mihomoctl update' # mihomoctl_auto_update") | crontab -
+    }
+    _okcat "已设置用户级定时更新订阅 (每2天执行一次)"
+}
+
+_download_and_apply_subscription() {
+    local url=$1
+
+    _okcat '👌' "正在下载：原配置已备份..."
+
+    # Ensure directories exist and backup using user permissions
+    mkdir -p "$(dirname "$MIHOMO_CONFIG_RAW_BAK")" "$(dirname "$MIHOMO_UPDATE_LOG")"
+    cp "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_RAW_BAK" 2>/dev/null
+
+    _rollback() {
+        _failcat '🍂' "$1"
+        # Restore backup using user permissions
+        cp "$MIHOMO_CONFIG_RAW_BAK" "$MIHOMO_CONFIG_RAW" 2>/dev/null
+        _append_update_log "订阅更新失败" "$url"
+        return 1
+    }
+
+    _download_config "$MIHOMO_CONFIG_RAW" "$url" || { _rollback "下载失败：已回滚配置" || true; return 1; }
+    _valid_config "$MIHOMO_CONFIG_RAW" || { _rollback "转换失败：已回滚配置，转换日志：$BIN_SUBCONVERTER_LOG" || true; return 1; }
+
+    _merge_config_restart || return 1
+    _okcat '🍃' '订阅更新成功'
+
+    # Save URL and log success using user permissions
+    _save_subscription_url "$url"
+    _append_update_log "订阅更新成功" "$url"
 }
 
 function clashsecret() {
@@ -454,13 +549,8 @@ function clashsecret() {
         fi
         ;;
     1)
-        # Ensure mixin config directory exists
-        mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
-        "$BIN_YQ" -i ".secret = \"$1\"" "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
-            _failcat "密钥更新失败，请重新输入"
-            return 1
-        }
-        _merge_config_restart
+        _update_mixin_config ".secret = \"$1\"" "密钥更新失败，请重新输入" || return 1
+        _apply_runtime_change
         _okcat "密钥更新成功，已重启生效"
         ;;
     *)
@@ -482,24 +572,14 @@ _tunstatus() {
 
 _tunoff() {
     _tunstatus >/dev/null || return 0
-    # Ensure mixin config directory exists
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
-    "$BIN_YQ" -i '.tun.enable = false' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
-        _failcat "无法更新 Tun 配置"
-        return 1
-    }
-    _merge_config_restart && _okcat "Tun 模式已关闭"
+    _update_mixin_config '.tun.enable = false' "无法更新 Tun 配置" || return 1
+    _apply_runtime_change && _okcat "Tun 模式已关闭"
 }
 
 _tunon() {
     _tunstatus 2>/dev/null && return 0
-    # Ensure mixin config directory exists
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
-    "$BIN_YQ" -i '.tun.enable = true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
-        _failcat "无法更新 Tun 配置"
-        return 1
-    }
-    _merge_config_restart
+    _update_mixin_config '.tun.enable = true' "无法更新 Tun 配置" || return 1
+    _apply_runtime_change
     sleep 0.5s
     
     # Check if mihomo is running and tun mode is working
@@ -555,24 +635,16 @@ _lanoff() {
         [ "$current_status" = 'false' ] && return 0
     }
 
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
-    "$BIN_YQ" -i '.allow-lan = false' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
-        _failcat "无法更新局域网访问配置"
-        return 1
-    }
-    _merge_config_restart && _okcat "局域网访问已关闭"
+    _update_mixin_config '.allow-lan = false' "无法更新局域网访问配置" || return 1
+    _apply_runtime_change && _okcat "局域网访问已关闭"
 }
 
 _lanon() {
     local current_status=$("$BIN_YQ" '.allow-lan // false' "${MIHOMO_CONFIG_RUNTIME}" 2>/dev/null)
     [ "$current_status" = 'true' ] && return 0
 
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
-    "$BIN_YQ" -i '.allow-lan = true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
-        _failcat "无法更新局域网访问配置"
-        return 1
-    }
-    _merge_config_restart && _okcat "局域网访问已开启"
+    _update_mixin_config '.allow-lan = true' "无法更新局域网访问配置" || return 1
+    _apply_runtime_change && _okcat "局域网访问已开启"
 }
 
 function clashlan() {
@@ -613,8 +685,7 @@ function clashsubscribe() {
         fi
         
         # Save URL
-        mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
-        echo "$new_url" > "$MIHOMO_CONFIG_URL"
+        _save_subscription_url "$new_url"
         _okcat "订阅地址已设置: $new_url"
         
         # Ask if user wants to update immediately
@@ -641,7 +712,7 @@ EOF
 
 function clashupdate() {
     local url=$(cat "$MIHOMO_CONFIG_URL" 2>/dev/null)
-    local is_auto
+    local is_auto=false
 
     case "$1" in
     auto)
@@ -657,59 +728,22 @@ function clashupdate() {
         ;;
     esac
 
-    # 如果没有提供有效的订阅链接（url为空或者不是http开头），则使用默认配置文件
-    [ "${url:0:4}" != "http" ] && {
-        _failcat "没有提供有效的订阅链接：使用 ${MIHOMO_CONFIG_RAW} 进行更新..."
-        url="file://$MIHOMO_CONFIG_RAW"
-    }
+    url=$(_resolve_update_url "$url")
 
     # 如果是自动更新模式，则设置用户级定时任务
     [ "$is_auto" = true ] && {
-        # Persist URL for cron runs (cron executes `mihomoctl update`, which reads MIHOMO_CONFIG_URL).
-        [ "${url:0:4}" = "http" ] && {
-            mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
-            echo "$url" > "$MIHOMO_CONFIG_URL"
-        }
-
-        # Check if crontab entry already exists
-        crontab -l 2>/dev/null | grep -qs 'mihomoctl_auto_update' || {
-            # Add user-level crontab entry (every 2 days at midnight)
-            (crontab -l 2>/dev/null; echo "0 0 */2 * * $_SHELL -i -c 'mihomoctl update' # mihomoctl_auto_update") | crontab -
-        }
-        _okcat "已设置用户级定时更新订阅 (每2天执行一次)" && return 0
+        _enable_auto_subscription_update "$url"
+        return 0
     }
 
-    _okcat '👌' "正在下载：原配置已备份..."
-    
-    # Ensure directories exist and backup using user permissions
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_RAW_BAK")" "$(dirname "$MIHOMO_UPDATE_LOG")"
-    cp "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_RAW_BAK" 2>/dev/null
-
-    _rollback() {
-        _failcat '🍂' "$1"
-        # Restore backup using user permissions
-        cp "$MIHOMO_CONFIG_RAW_BAK" "$MIHOMO_CONFIG_RAW" 2>/dev/null
-        echo "[$(date +"%Y-%m-%d %H:%M:%S")] 订阅更新失败：$url" >> "${MIHOMO_UPDATE_LOG}"
-        return 1
-    }
-
-    _download_config "$MIHOMO_CONFIG_RAW" "$url" || { _rollback "下载失败：已回滚配置" || true; return 1; }
-    _valid_config "$MIHOMO_CONFIG_RAW" || { _rollback "转换失败：已回滚配置，转换日志：$BIN_SUBCONVERTER_LOG" || true; return 1; }
-
-    _merge_config_restart || return 1
-    _okcat '🍃' '订阅更新成功'
-    
-    # Save URL and log success using user permissions
-    mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
-    echo "$url" > "$MIHOMO_CONFIG_URL"
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 订阅更新成功：$url" >> "${MIHOMO_UPDATE_LOG}"
+    _download_and_apply_subscription "$url"
 }
 
 function clashmixin() {
     case "$1" in
     -e)
         vim "$MIHOMO_CONFIG_MIXIN" && {
-            _merge_config_restart && _okcat "配置更新成功，已重启生效"
+            _apply_runtime_change && _okcat "配置更新成功，已重启生效"
         }
         ;;
     -r)
