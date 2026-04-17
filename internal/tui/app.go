@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"clash-for-lab/internal/mihomo"
+	"labproxy/internal/proxy"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -21,11 +21,11 @@ type Options struct {
 }
 
 type App struct {
-	client *mihomo.Client
+	client *proxy.Client
 	opts   Options
 }
 
-func NewApp(client *mihomo.Client, opts Options) *App {
+func NewApp(client *proxy.Client, opts Options) *App {
 	return &App{client: client, opts: opts}
 }
 
@@ -70,10 +70,10 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type refreshMsg struct {
-	version mihomo.Version
-	config  mihomo.Config
-	traffic mihomo.Traffic
-	proxies mihomo.ProxiesResponse
+	version proxy.Version
+	config  proxy.Config
+	traffic proxy.Traffic
+	proxies proxy.ProxiesResponse
 }
 
 type tickMsg time.Time
@@ -88,7 +88,7 @@ type switchResultMsg struct {
 }
 
 type model struct {
-	client             *mihomo.Client
+	client             *proxy.Client
 	endpoint           string
 	systemProxyEnabled bool
 
@@ -97,7 +97,7 @@ type model struct {
 	up      int64
 	down    int64
 
-	rawProxies  mihomo.ProxiesResponse
+	rawProxies  proxy.ProxiesResponse
 	groups      []GroupView
 	focus       paneFocus
 	groupIndex  int
@@ -114,7 +114,7 @@ type model struct {
 	lastError  error
 }
 
-func newModel(client *mihomo.Client, opts Options) model {
+func newModel(client *proxy.Client, opts Options) model {
 	search := textinput.New()
 	search.Placeholder = "Search proxies or groups"
 	search.CharLimit = 64
@@ -387,9 +387,9 @@ func (m model) delayRefreshCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return refreshMsg{
-			version: mihomo.Version{Version: m.version},
-			config:  mihomo.Config{Mode: m.mode},
-			traffic: mihomo.Traffic{Up: m.up, Down: m.down},
+			version: proxy.Version{Version: m.version},
+			config:  proxy.Config{Mode: m.mode},
+			traffic: proxy.Traffic{Up: m.up, Down: m.down},
 			proxies: proxies,
 		}
 	}

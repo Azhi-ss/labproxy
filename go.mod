@@ -1,4 +1,4 @@
-module clash-for-lab
+module labproxy
 
 go 1.24.2
 

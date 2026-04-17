@@ -5,9 +5,9 @@
 [ -n "$ZSH_VERSION" ] && setopt glob no_nomatch
 
 URL_GH_PROXY='https://ghfast.top'
-URL_CLASH_UI="http://board.zash.run.place"
+URL_LABPROXY_UI="http://board.zash.run.place"
 
-SCRIPT_BASE_DIR='./script'
+SCRIPT_BASE_DIR='./scripts'
 
 RESOURCES_BASE_DIR='./resources'
 RESOURCES_BIN_DIR="${RESOURCES_BASE_DIR}/bin"
@@ -19,32 +19,20 @@ ZIP_CLASH=$(echo ${ZIP_BASE_DIR}/clash*)
 ZIP_MIHOMO=$(echo ${ZIP_BASE_DIR}/mihomo*)
 ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
 ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
-ZIP_CLASH_TUI=""
+ZIP_LABPROXY_TUI=""
 
 ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
 
-MIHOMO_BASE_DIR="$HOME/tools/mihomo"
-MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
-MIHOMO_CONFIG_URL="${MIHOMO_BASE_DIR}/url"
-MIHOMO_CONFIG_RAW="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG)"
-MIHOMO_CONFIG_RAW_BAK="${MIHOMO_CONFIG_RAW}.bak"
-MIHOMO_CONFIG_MIXIN="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
-MIHOMO_CONFIG_RUNTIME="${MIHOMO_BASE_DIR}/runtime.yaml"
-MIHOMO_UPDATE_LOG="${MIHOMO_BASE_DIR}/mihomoctl.log"
-MIHOMO_TUI_SRC_DIR="${MIHOMO_BASE_DIR}/tui-src"
-MIHOMO_TUI_BIN="${MIHOMO_BASE_DIR}/bin/clash-tui"
-
-# Legacy compatibility - keep CLASH_* variables pointing to new locations
-CLASH_BASE_DIR="$MIHOMO_BASE_DIR"
-CLASH_SCRIPT_DIR="$MIHOMO_SCRIPT_DIR"
-CLASH_CONFIG_URL="$MIHOMO_CONFIG_URL"
-CLASH_CONFIG_RAW="$MIHOMO_CONFIG_RAW"
-CLASH_CONFIG_RAW_BAK="$MIHOMO_CONFIG_RAW_BAK"
-CLASH_CONFIG_MIXIN="$MIHOMO_CONFIG_MIXIN"
-CLASH_CONFIG_RUNTIME="$MIHOMO_CONFIG_RUNTIME"
-CLASH_UPDATE_LOG="$MIHOMO_UPDATE_LOG"
-CLASH_TUI_SRC_DIR="$MIHOMO_TUI_SRC_DIR"
-CLASH_TUI_BIN="$MIHOMO_TUI_BIN"
+LABPROXY_HOME_DIR="$HOME/.labproxy"
+LABPROXY_SCRIPT_DIR="${LABPROXY_HOME_DIR}/$(basename $SCRIPT_BASE_DIR)"
+LABPROXY_CONFIG_URL="${LABPROXY_HOME_DIR}/url"
+LABPROXY_CONFIG_RAW="${LABPROXY_HOME_DIR}/$(basename $RESOURCES_CONFIG)"
+LABPROXY_CONFIG_RAW_BAK="${LABPROXY_CONFIG_RAW}.bak"
+LABPROXY_CONFIG_MIXIN="${LABPROXY_HOME_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
+LABPROXY_CONFIG_RUNTIME="${LABPROXY_HOME_DIR}/runtime.yaml"
+LABPROXY_UPDATE_LOG="${LABPROXY_HOME_DIR}/labproxyctl.log"
+LABPROXY_TUI_SRC_DIR="${LABPROXY_HOME_DIR}/tui-src"
+LABPROXY_TUI_BIN="${LABPROXY_HOME_DIR}/bin/labproxy-tui"
 
 _is_dir_writable() {
     local dir=$1
@@ -69,7 +57,7 @@ _set_tmpdir_default() {
         ;;
     *)
         if _is_dir_writable "/run/user/$uid"; then
-            candidate="/run/user/$uid/mihomo-tmp"
+            candidate="/run/user/$uid/labproxy-tmp"
             mkdir -p "$candidate" 2>/dev/null || true
             if _is_dir_writable "$candidate"; then
                 export TMPDIR="$candidate"
@@ -82,7 +70,7 @@ _set_tmpdir_default() {
     esac
 
     if _is_dir_writable "/dev/shm"; then
-        candidate="/dev/shm/mihomo-tmp-${USER:-$uid}"
+        candidate="/dev/shm/labproxy-tmp-${USER:-$uid}"
         mkdir -p "$candidate" 2>/dev/null || true
         if _is_dir_writable "$candidate"; then
             export TMPDIR="$candidate"
@@ -93,7 +81,7 @@ _set_tmpdir_default() {
     fi
 
     if _is_dir_writable "$HOME"; then
-        candidate="$HOME/.cache/mihomo/tmp"
+        candidate="$HOME/.cache/labproxy/tmp"
         mkdir -p "$candidate" 2>/dev/null || true
         if _is_dir_writable "$candidate"; then
             export TMPDIR="$candidate"
@@ -103,8 +91,8 @@ _set_tmpdir_default() {
         fi
     fi
 
-    if [ -n "$MIHOMO_BASE_DIR" ]; then
-        candidate="$MIHOMO_BASE_DIR/tmp"
+    if [ -n "$LABPROXY_HOME_DIR" ]; then
+        candidate="$LABPROXY_HOME_DIR/tmp"
         mkdir -p "$candidate" 2>/dev/null || true
         if _is_dir_writable "$candidate"; then
             export TMPDIR="$candidate"
@@ -140,10 +128,7 @@ _set_var() {
     }
 
 
-    MIHOMO_CRON_TAB="user"  # 标记使用用户级crontab
-    
-    # Legacy compatibility
-    CLASH_CRON_TAB="$MIHOMO_CRON_TAB"
+    LABPROXY_CRON_TAB="user"  # 标记使用用户级crontab
 
     # Avoid using /tmp when / is full (bash heredoc, yq -i, mktemp, etc.).
     _set_tmpdir_default || true
@@ -152,7 +137,7 @@ _set_var
 
 # shellcheck disable=SC2120
 _set_bin() {
-    local bin_base_dir="${MIHOMO_BASE_DIR}/bin"
+    local bin_base_dir="${LABPROXY_HOME_DIR}/bin"
     [ -n "$1" ] && bin_base_dir=$1
     BIN_CLASH="${bin_base_dir}/clash"
     BIN_MIHOMO="${bin_base_dir}/mihomo"
@@ -174,15 +159,15 @@ _set_bin() {
 _set_bin
 
 _rc_managed_line() {
-    printf 'source %s/common.sh && source %s/clashctl.sh && watch_proxy' "$MIHOMO_SCRIPT_DIR" "$MIHOMO_SCRIPT_DIR"
+    printf 'source %s/common.sh && source %s/proxyctl.sh && watch_proxy' "$LABPROXY_SCRIPT_DIR" "$LABPROXY_SCRIPT_DIR"
 }
 
 _rc_block_begin() {
-    printf '%s\n' '# >>> clash-for-lab >>>'
+    printf '%s\n' '# >>> labproxy >>>'
 }
 
 _rc_block_end() {
-    printf '%s\n' '# <<< clash-for-lab <<<'
+    printf '%s\n' '# <<< labproxy <<<'
 }
 
 _write_rc_block() {
@@ -313,13 +298,13 @@ function _get_tui_archive() {
     # 查找匹配的预编译 TUI
     local candidate="${ZIP_BASE_DIR}/clash-tui-${os}-${arch}.tar.gz"
     if [ -f "$candidate" ]; then
-        ZIP_CLASH_TUI="$candidate"
-        _okcat "使用预编译 TUI：$(basename "$ZIP_CLASH_TUI")"
+        ZIP_LABPROXY_TUI="$candidate"
+        _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
         return 0
     fi
 
     # 没有找到预编译版本
-    ZIP_CLASH_TUI=""
+    ZIP_LABPROXY_TUI=""
     _failcat "未找到预编译 TUI（${os}/${arch}），将尝试从源码构建"
     return 1
 }
@@ -336,21 +321,21 @@ _get_random_port() {
         # Fallback using RANDOM (bash/zsh)
         randomPort=$((RANDOM % 64512 + 1024))
     fi
-    
+
     ! _is_bind "$randomPort" && { echo "$randomPort" && return; }
     _get_random_port
 }
 
 # 端口状态与偏好文件路径
-MIHOMO_PORT_STATE="${MIHOMO_BASE_DIR}/config/ports.conf"
-MIHOMO_PORT_PREF="${MIHOMO_BASE_DIR}/config/port.pref"
+LABPROXY_PORT_STATE="${LABPROXY_HOME_DIR}/config/ports.conf"
+LABPROXY_PORT_PREF="${LABPROXY_HOME_DIR}/config/port.pref"
 
 # 读取代理端口偏好设置
 _load_port_preferences() {
     PORT_PREF_MODE=auto
     PORT_PREF_VALUE=""
 
-    [ -f "$MIHOMO_PORT_PREF" ] || return 0
+    [ -f "$LABPROXY_PORT_PREF" ] || return 0
 
     while IFS='=' read -r key value; do
         case "$key" in
@@ -361,7 +346,7 @@ _load_port_preferences() {
             PORT_PREF_VALUE=$value
             ;;
         esac
-    done < "$MIHOMO_PORT_PREF"
+    done < "$LABPROXY_PORT_PREF"
 
     [ "$PORT_PREF_MODE" = "manual" ] || PORT_PREF_MODE=auto
 }
@@ -371,8 +356,8 @@ _save_port_preferences() {
     local mode=$1
     local value=$2
 
-    mkdir -p "$(dirname "$MIHOMO_PORT_PREF")"
-    cat > "$MIHOMO_PORT_PREF" <<EOF
+    mkdir -p "$(dirname "$LABPROXY_PORT_PREF")"
+    cat > "$LABPROXY_PORT_PREF" <<EOF
 PROXY_MODE=$mode
 PROXY_PORT=$value
 EOF
@@ -384,8 +369,8 @@ _save_port_state() {
     local ui_port=$2
     local dns_port=$3
 
-    mkdir -p "$(dirname "$MIHOMO_PORT_STATE")"
-    cat > "$MIHOMO_PORT_STATE" << EOF
+    mkdir -p "$(dirname "$LABPROXY_PORT_STATE")"
+    cat > "$LABPROXY_PORT_STATE" << EOF
 PROXY_PORT=$proxy_port
 UI_PORT=$ui_port
 DNS_PORT=$dns_port
@@ -395,24 +380,24 @@ EOF
 
 # 从状态文件读取实际监听端口
 function _get_proxy_port() {
-    if [ -f "$MIHOMO_PORT_STATE" ]; then
-        MIXED_PORT=$(grep "^PROXY_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
+    if [ -f "$LABPROXY_PORT_STATE" ]; then
+        MIXED_PORT=$(grep "^PROXY_PORT=" "$LABPROXY_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
     # 如果状态文件不存在或读取失败，使用默认值
     MIXED_PORT=${MIXED_PORT:-7890}
 }
 
 function _get_ui_port() {
-    if [ -f "$MIHOMO_PORT_STATE" ]; then
-        UI_PORT=$(grep "^UI_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
+    if [ -f "$LABPROXY_PORT_STATE" ]; then
+        UI_PORT=$(grep "^UI_PORT=" "$LABPROXY_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
     # 如果状态文件不存在或读取失败，使用默认值
     UI_PORT=${UI_PORT:-9090}
 }
 
 function _get_dns_port() {
-    if [ -f "$MIHOMO_PORT_STATE" ]; then
-        DNS_PORT=$(grep "^DNS_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
+    if [ -f "$LABPROXY_PORT_STATE" ]; then
+        DNS_PORT=$(grep "^DNS_PORT=" "$LABPROXY_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
     # 如果状态文件不存在或读取失败，使用默认值
     DNS_PORT=${DNS_PORT:-15353}
@@ -629,8 +614,8 @@ _download_raw_config() {
 }
 
 _build_clash_tui() {
-    local source_dir="${1:-$MIHOMO_TUI_SRC_DIR}"
-    local dest="${2:-$MIHOMO_TUI_BIN}"
+    local source_dir="${1:-$LABPROXY_TUI_SRC_DIR}"
+    local dest="${2:-$LABPROXY_TUI_BIN}"
 
     command -v go >/dev/null 2>&1 || {
         _failcat "未检测到 Go，无法构建内置 TUI"
@@ -661,16 +646,16 @@ _install_tui_from_source() {
     _okcat "从源码构建 TUI..."
 
     # 复制 TUI 源码
-    mkdir -p "$MIHOMO_TUI_SRC_DIR"
-    cp -rf "$SCRIPT_DIR"/cmd "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
-    cp -rf "$SCRIPT_DIR"/internal "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
-    cp "$SCRIPT_DIR"/go.mod "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
-    [ -f "$SCRIPT_DIR"/go.sum ] && cp "$SCRIPT_DIR"/go.sum "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
+    mkdir -p "$LABPROXY_TUI_SRC_DIR"
+    cp -rf "$SCRIPT_DIR"/cmd "$LABPROXY_TUI_SRC_DIR"/ 2>/dev/null || true
+    cp -rf "$SCRIPT_DIR"/internal "$LABPROXY_TUI_SRC_DIR"/ 2>/dev/null || true
+    cp "$SCRIPT_DIR"/go.mod "$LABPROXY_TUI_SRC_DIR"/ 2>/dev/null || true
+    [ -f "$SCRIPT_DIR"/go.sum ] && cp "$SCRIPT_DIR"/go.sum "$LABPROXY_TUI_SRC_DIR"/ 2>/dev/null || true
 
     if command -v go >/dev/null 2>&1; then
-        _build_clash_tui "$MIHOMO_TUI_SRC_DIR" "$MIHOMO_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'clash tui' 时重试"
+        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$LABPROXY_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'labproxy tui' 时重试"
     else
-        _failcat "未检测到 Go，首次执行 'clash tui' 前需要先安装 Go 以构建内置 TUI"
+        _failcat "未检测到 Go，首次执行 'labproxy tui' 前需要先安装 Go 以构建内置 TUI"
     fi
 }
 
@@ -737,7 +722,7 @@ _stop_convert() {
 }
 
 # User-space process management functions
-_is_mihomo_pid() {
+_is_labproxy_pid() {
     local pid=$1
     [[ $pid =~ ^[0-9]+$ ]] || return 1
 
@@ -751,57 +736,57 @@ _is_mihomo_pid() {
     local args
     args=$(ps -p "$pid" -o args= 2>/dev/null || true)
     [ -n "$args" ] || return 1
-    echo "$args" | grep -Fqs " -d $MIHOMO_BASE_DIR" || return 1
-    echo "$args" | grep -Fqs " -f $MIHOMO_CONFIG_RUNTIME" || return 1
+    echo "$args" | grep -Fqs " -d $LABPROXY_HOME_DIR" || return 1
+    echo "$args" | grep -Fqs " -f $LABPROXY_CONFIG_RUNTIME" || return 1
     return 0
 }
 
-start_mihomo() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
-    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
-    
+start_labproxy() {
+    local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
+    local log_file="$LABPROXY_HOME_DIR/logs/labproxy.log"
+
     # Create necessary directories
     mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")"
-    
-    # Check if mihomo is already running
-    if is_mihomo_running; then
-        _okcat "mihomo 进程已在运行"
+
+    # Check if labproxy is already running
+    if is_labproxy_running; then
+        _okcat "labproxy 进程已在运行"
         return 0
     fi
-    
+
     # Validate configuration before starting
-    _valid_config "$MIHOMO_CONFIG_RUNTIME" || {
-        _failcat "配置文件验证失败，无法启动 mihomo"
+    _valid_config "$LABPROXY_CONFIG_RUNTIME" || {
+        _failcat "配置文件验证失败，无法启动 labproxy"
         return 1
     }
-    
-    # Start mihomo process in background using nohup
-    nohup "$BIN_KERNEL" -d "$MIHOMO_BASE_DIR" -f "$MIHOMO_CONFIG_RUNTIME" \
+
+    # Start labproxy process in background using nohup
+    nohup "$BIN_KERNEL" -d "$LABPROXY_HOME_DIR" -f "$LABPROXY_CONFIG_RUNTIME" \
         > "$log_file" 2>&1 &
-    
+
     local pid=$!
     echo "$pid" > "$pid_file"
-    
+
     # Wait a moment and verify the process started successfully
     sleep 1
-    if is_mihomo_running; then
-        _okcat "mihomo 进程启动成功 (PID: $pid)"
+    if is_labproxy_running; then
+        _okcat "labproxy 进程启动成功 (PID: $pid)"
         return 0
     else
         rm -f "$pid_file"
-        _failcat "mihomo 进程启动失败，请检查日志: $log_file"
+        _failcat "labproxy 进程启动失败，请检查日志: $log_file"
         return 1
     fi
 }
 
-stop_mihomo() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
-    
+stop_labproxy() {
+    local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
+
     if [ ! -f "$pid_file" ]; then
-        _okcat "mihomo 进程未运行"
+        _okcat "labproxy 进程未运行"
         return 0
     fi
-    
+
     local pid=$(cat "$pid_file" 2>/dev/null)
     if [ -z "$pid" ]; then
         rm -f "$pid_file"
@@ -809,12 +794,12 @@ stop_mihomo() {
         return 0
     fi
 
-    if ! _is_mihomo_pid "$pid"; then
-        _failcat "PID 文件指向非 mihomo 进程，已清理 PID 文件以避免误杀 (PID: $pid)"
+    if ! _is_labproxy_pid "$pid"; then
+        _failcat "PID 文件指向非 labproxy 进程，已清理 PID 文件以避免误杀 (PID: $pid)"
         rm -f "$pid_file"
         return 1
     fi
-    
+
     # Try graceful shutdown first
     if kill "$pid" 2>/dev/null; then
         # Wait for graceful shutdown
@@ -823,34 +808,34 @@ stop_mihomo() {
             sleep 1
             count=$((count + 1))
         done
-        
+
         # Force kill if still running
         if kill -0 "$pid" 2>/dev/null; then
             kill -9 "$pid" 2>/dev/null
-            _okcat "强制终止 mihomo 进程 (PID: $pid)"
+            _okcat "强制终止 labproxy 进程 (PID: $pid)"
         else
-            _okcat "mihomo 进程已优雅停止 (PID: $pid)"
+            _okcat "labproxy 进程已优雅停止 (PID: $pid)"
         fi
     else
-        _okcat "mihomo 进程已停止"
+        _okcat "labproxy 进程已停止"
     fi
-    
+
     rm -f "$pid_file"
     # 清理端口状态文件
-    rm -f "$MIHOMO_PORT_STATE"
+    rm -f "$LABPROXY_PORT_STATE"
     return 0
 }
 
-is_mihomo_running() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
-    
+is_labproxy_running() {
+    local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
+
     [ ! -f "$pid_file" ] && return 1
-    
+
     local pid=$(cat "$pid_file" 2>/dev/null)
     [ -z "$pid" ] && return 1
-    
+
     # Check if process is actually running
-    kill -0 "$pid" 2>/dev/null && _is_mihomo_pid "$pid"
+    kill -0 "$pid" 2>/dev/null && _is_labproxy_pid "$pid"
 }
 
 _resolve_port_conflicts() {
@@ -949,7 +934,7 @@ _resolve_port_conflicts() {
         UI_PORT=9090
         bind_addr="127.0.0.1"
     fi
-    
+
     if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
         [ "$show_message" = true ] && _failcat '🎯' "UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
@@ -957,7 +942,7 @@ _resolve_port_conflicts() {
         UI_PORT=$newPort
         port_changed=true
     fi
-    
+
     # Check DNS listen port
     local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$config_file" 2>/dev/null)
     if [ -n "$dns_listen" ]; then
@@ -970,7 +955,7 @@ _resolve_port_conflicts() {
         DNS_PORT=15353
         dns_bind_addr="0.0.0.0"
     fi
-    
+
     if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
         [ "$show_message" = true ] && _failcat '🎯' "DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
@@ -978,10 +963,10 @@ _resolve_port_conflicts() {
         DNS_PORT=$newPort
         port_changed=true
     fi
-    
+
     if [ "$port_changed" = true ] && [ "$show_message" = true ]; then
         _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
     fi
-    
+
     return 0
 }

@@ -16,7 +16,7 @@ assignees: ''
 hostnamectl
 
 # 内核状况（若已安装）
-clashstatus -l
+labproxy status -l
 ```
 
 **描述 & 复现：**

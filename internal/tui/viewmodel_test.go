@@ -3,15 +3,15 @@ package tui
 import (
 	"testing"
 
-	"clash-for-lab/internal/mihomo"
+	"labproxy/internal/proxy"
 )
 
 func TestBuildGroupViews(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Traffic: 1GB", "Node-A", "Node-B", "Expire: 2027-01-01"}},
-			"Node-A": {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B": {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B": {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
 			"DIRECT": {Name: "DIRECT", Type: "Direct"},
 		},
 	}
@@ -35,8 +35,8 @@ func TestBuildGroupViews(t *testing.T) {
 }
 
 func TestBuildGroupViews_EmptyResponse(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{},
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{},
 	}
 
 	groups := BuildGroupViews(resp, "")
@@ -46,8 +46,8 @@ func TestBuildGroupViews_EmptyResponse(t *testing.T) {
 }
 
 func TestBuildGroupViews_NoOptions(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"DIRECT": {Name: "DIRECT", Type: "Direct", All: []string{}},
 		},
 	}
@@ -59,8 +59,8 @@ func TestBuildGroupViews_NoOptions(t *testing.T) {
 }
 
 func TestBuildGroupViews_OnlyMetaOptions(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GROUP": {Name: "GROUP", Type: "Selector", Now: "Node-A", All: []string{"Traffic: 1GB", "Expire: 2027-01-01"}},
 		},
 	}
@@ -72,14 +72,14 @@ func TestBuildGroupViews_OnlyMetaOptions(t *testing.T) {
 }
 
 func TestBuildGroupViews_PrioritySorting(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"PROXY":   {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
 			"GLOBAL":  {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
 			"CUSTOM":  {Name: "CUSTOM", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
-			"Node-A":  {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B":  {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
-			"Node-C":  {Name: "Node-C", Type: "SS", History: []mihomo.DelayHistory{{Delay: 120}}},
+			"Node-A":  {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B":  {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C":  {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
 		},
 	}
 
@@ -97,14 +97,14 @@ func TestBuildGroupViews_PrioritySorting(t *testing.T) {
 }
 
 func TestBuildGroupViews_WithFilter(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL":    {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B", "Node-C"}},
 			"PROXY":     {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C", "Node-D"}},
-			"Node-A":    {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B":    {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
-			"Node-C":    {Name: "Node-C", Type: "SS", History: []mihomo.DelayHistory{{Delay: 120}}},
-			"Node-D":    {Name: "Node-D", Type: "SS", History: []mihomo.DelayHistory{{Delay: 150}}},
+			"Node-A":    {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B":    {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C":    {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
+			"Node-D":    {Name: "Node-D", Type: "SS", History: []proxy.DelayHistory{{Delay: 150}}},
 		},
 	}
 
@@ -124,14 +124,14 @@ func TestBuildGroupViews_WithFilter(t *testing.T) {
 }
 
 func TestBuildGroupViews_FilterMatchesGroupName(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL":      {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
 			"PROXY":       {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
 			"MY-GROUP":    {Name: "MY-GROUP", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
-			"Node-A":      {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B":      {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
-			"Node-C":      {Name: "Node-C", Type: "SS", History: []mihomo.DelayHistory{{Delay: 120}}},
+			"Node-A":      {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B":      {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C":      {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
 		},
 	}
 
@@ -145,12 +145,12 @@ func TestBuildGroupViews_FilterMatchesGroupName(t *testing.T) {
 }
 
 func TestBuildGroupViews_FilterHidesGroupWithNoMatchingOptions(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL":      {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
 			"PROXY":       {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
-			"Node-A":      {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B":      {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
+			"Node-A":      {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B":      {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
 		},
 	}
 
@@ -161,11 +161,11 @@ func TestBuildGroupViews_FilterHidesGroupWithNoMatchingOptions(t *testing.T) {
 }
 
 func TestBuildGroupViews_CaseInsensitiveFilter(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B"}},
-			"Node-A": {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-B": {Name: "Node-B", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B": {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
 		},
 	}
 
@@ -188,10 +188,10 @@ func TestBuildGroupViews_CaseInsensitiveFilter(t *testing.T) {
 }
 
 func TestBuildGroupViews_FilterWithWhitespace(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
-			"Node-A": {Name: "Node-A", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
 		},
 	}
 
@@ -202,17 +202,17 @@ func TestBuildGroupViews_FilterWithWhitespace(t *testing.T) {
 }
 
 func TestBuildGroupViews_MultipleGroups(t *testing.T) {
-	resp := mihomo.ProxiesResponse{
-		Proxies: map[string]mihomo.Proxy{
+	resp := proxy.ProxiesResponse{
+		Proxies: map[string]proxy.Proxy{
 			"GROUP-A": {Name: "GROUP-A", Type: "Selector", Now: "Node-A1", All: []string{"Node-A1", "Node-A2"}},
 			"GROUP-B": {Name: "GROUP-B", Type: "Selector", Now: "Node-B1", All: []string{"Node-B1", "Node-B2"}},
 			"GROUP-C": {Name: "GROUP-C", Type: "Selector", Now: "Node-C1", All: []string{"Node-C1", "Node-C2"}},
-			"Node-A1": {Name: "Node-A1", Type: "SS", History: []mihomo.DelayHistory{{Delay: 42}}},
-			"Node-A2": {Name: "Node-A2", Type: "SS", History: []mihomo.DelayHistory{{Delay: 84}}},
-			"Node-B1": {Name: "Node-B1", Type: "SS", History: []mihomo.DelayHistory{{Delay: 120}}},
-			"Node-B2": {Name: "Node-B2", Type: "SS", History: []mihomo.DelayHistory{{Delay: 150}}},
-			"Node-C1": {Name: "Node-C1", Type: "SS", History: []mihomo.DelayHistory{{Delay: 200}}},
-			"Node-C2": {Name: "Node-C2", Type: "SS", History: []mihomo.DelayHistory{{Delay: 250}}},
+			"Node-A1": {Name: "Node-A1", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-A2": {Name: "Node-A2", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-B1": {Name: "Node-B1", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
+			"Node-B2": {Name: "Node-B2", Type: "SS", History: []proxy.DelayHistory{{Delay: 150}}},
+			"Node-C1": {Name: "Node-C1", Type: "SS", History: []proxy.DelayHistory{{Delay: 200}}},
+			"Node-C2": {Name: "Node-C2", Type: "SS", History: []proxy.DelayHistory{{Delay: 250}}},
 		},
 	}
 
@@ -231,32 +231,32 @@ func TestBuildGroupViews_MultipleGroups(t *testing.T) {
 func TestLatestDelay(t *testing.T) {
 	tests := []struct {
 		name     string
-		proxy    mihomo.Proxy
+		proxy    proxy.Proxy
 		expected int
 	}{
 		{
 			name:     "empty history",
-			proxy:    mihomo.Proxy{History: []mihomo.DelayHistory{}},
+			proxy:    proxy.Proxy{History: []proxy.DelayHistory{}},
 			expected: 0,
 		},
 		{
 			name:     "single entry",
-			proxy:    mihomo.Proxy{History: []mihomo.DelayHistory{{Delay: 42}}},
+			proxy:    proxy.Proxy{History: []proxy.DelayHistory{{Delay: 42}}},
 			expected: 42,
 		},
 		{
 			name:     "multiple entries",
-			proxy:    mihomo.Proxy{History: []mihomo.DelayHistory{{Delay: 42}, {Delay: 84}, {Delay: 120}}},
+			proxy:    proxy.Proxy{History: []proxy.DelayHistory{{Delay: 42}, {Delay: 84}, {Delay: 120}}},
 			expected: 120,
 		},
 		{
 			name:     "zero delay",
-			proxy:    mihomo.Proxy{History: []mihomo.DelayHistory{{Delay: 0}}},
+			proxy:    proxy.Proxy{History: []proxy.DelayHistory{{Delay: 0}}},
 			expected: 0,
 		},
 		{
 			name:     "negative delay",
-			proxy:    mihomo.Proxy{History: []mihomo.DelayHistory{{Delay: -1}}},
+			proxy:    proxy.Proxy{History: []proxy.DelayHistory{{Delay: -1}}},
 			expected: -1,
 		},
 	}

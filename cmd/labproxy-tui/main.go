@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"clash-for-lab/internal/config"
-	"clash-for-lab/internal/mihomo"
-	"clash-for-lab/internal/tui"
+	"labproxy/internal/config"
+	"labproxy/internal/proxy"
+	"labproxy/internal/tui"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := tui.NewApp(mihomo.NewClient(*endpoint, *secret), tui.Options{
+	app := tui.NewApp(proxy.NewClient(*endpoint, *secret), tui.Options{
 		Endpoint:           *endpoint,
 		SystemProxyEnabled: systemProxyEnabled,
 	})

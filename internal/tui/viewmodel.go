@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"clash-for-lab/internal/mihomo"
+	"labproxy/internal/proxy"
 )
 
 type GroupView struct {
@@ -20,7 +20,7 @@ type OptionView struct {
 	DelayMS  int
 }
 
-func BuildGroupViews(resp mihomo.ProxiesResponse, filter string) []GroupView {
+func BuildGroupViews(resp proxy.ProxiesResponse, filter string) []GroupView {
 	filter = strings.ToLower(strings.TrimSpace(filter))
 	groups := make([]GroupView, 0)
 
@@ -68,7 +68,7 @@ func BuildGroupViews(resp mihomo.ProxiesResponse, filter string) []GroupView {
 	return groups
 }
 
-func latestDelay(proxy mihomo.Proxy) int {
+func latestDelay(proxy proxy.Proxy) int {
 	if len(proxy.History) == 0 {
 		return 0
 	}
