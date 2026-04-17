@@ -45,7 +45,8 @@ func BuildGroupViews(resp mihomo.ProxiesResponse, filter string) []GroupView {
 			})
 		}
 
-		if filter != "" && !strings.Contains(strings.ToLower(name), filter) && len(options) == 0 {
+		// Skip groups with no options (all filtered out or only meta options)
+		if len(options) == 0 {
 			continue
 		}
 
@@ -75,10 +76,10 @@ func latestDelay(proxy mihomo.Proxy) int {
 }
 
 func priority(name string) int {
-	switch name {
+	switch name = strings.ToUpper(name); name {
 	case "GLOBAL":
 		return 0
-	case "Proxy":
+	case "PROXY":
 		return 1
 	default:
 		return 10
