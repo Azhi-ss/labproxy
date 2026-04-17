@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -33,7 +34,11 @@ func main() {
 		Endpoint:           *endpoint,
 		SystemProxyEnabled: systemProxyEnabled,
 	})
-	if err := app.Run(); err != nil {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := app.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

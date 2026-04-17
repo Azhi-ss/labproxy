@@ -49,8 +49,10 @@ local_config.yaml
 # Compiled binaries
 mihomo
 clash
+clash-tui
 yq
 subconverter
+build/
 
 # Compressed files (except required resources)
 *.tar.gz

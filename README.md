@@ -210,15 +210,16 @@ clash lan off
 clash tui
 ```
 
-TUI 界面现在由本仓库内置维护，使用 Go 实现并通过 `clash tui` 启动。首次使用时会在本地构建内置 TUI（二进制输出到 `~/tools/mihomo/bin/clash-tui`）。
+TUI 界面由本仓库内置维护，使用 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 实现并通过 `clash tui` 启动。首次使用时会在本地构建内置 TUI（二进制输出到 `~/tools/mihomo/bin/clash-tui`）。
 
 功能特性：
-- 实时流量监控和图表展示
-- 查看当前连接数和速度统计
-- 切换代理节点和规则
-- 查看日志和配置信息
+- 实时流量监控（上行/下行速度）
+- 代理分组与节点切换
+- 节点延迟测试
+- 搜索过滤分组和节点
+- 自适应终端宽度，支持窄终端
 
-> 提示：使用数字键 1-6 切换不同面板，按 `q` 退出。
+> 提示：使用 `↑/↓` 或 `j/k` 导航，`Tab` 或 `←/→` 切换面板，`Enter` 选择节点，`r` 刷新延迟，`/` 搜索，`q` 退出。
 
 #### 3.4 Web 控制台管理
 
@@ -358,7 +359,7 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 - [subconverter](https://github.com/tindy2013/subconverter) - 订阅转换工具
 - [zashboard](https://github.com/Zephyruso/zashboard) - Web 控制台界面
 - [yq](https://github.com/mikefarah/yq) - YAML 处理工具
-- 内置 Go TUI - 项目内维护的终端交互界面
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - 内置 TUI 框架
 
 ### 参考资料
 

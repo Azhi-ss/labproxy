@@ -19,9 +19,9 @@ ZIP_CLASH=$(echo ${ZIP_BASE_DIR}/clash*)
 ZIP_MIHOMO=$(echo ${ZIP_BASE_DIR}/mihomo*)
 ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
 ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
+ZIP_CLASH_TUI=""
 
 ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
-ZIP_CLASHCTL=$(echo ${ZIP_BASE_DIR}/clashctl*)
 
 MIHOMO_BASE_DIR="$HOME/tools/mihomo"
 MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
@@ -289,6 +289,41 @@ function _get_kernel() {
     _okcat "安装内核：$BIN_KERNEL_NAME"
 }
 
+# 检测并选择预编译的 clash-tui 压缩包
+function _get_tui_archive() {
+    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local arch=$(uname -m)
+
+    # 标准化架构名称
+    case "$arch" in
+    x86_64)
+        arch="amd64"
+        ;;
+    aarch64)
+        arch="arm64"
+        ;;
+    armv*)
+        arch="arm64"
+        ;;
+    i686|i386)
+        arch="386"
+        ;;
+    esac
+
+    # 查找匹配的预编译 TUI
+    local candidate="${ZIP_BASE_DIR}/clash-tui-${os}-${arch}.tar.gz"
+    if [ -f "$candidate" ]; then
+        ZIP_CLASH_TUI="$candidate"
+        _okcat "使用预编译 TUI：$(basename "$ZIP_CLASH_TUI")"
+        return 0
+    fi
+
+    # 没有找到预编译版本
+    ZIP_CLASH_TUI=""
+    _failcat "未找到预编译 TUI（${os}/${arch}），将尝试从源码构建"
+    return 1
+}
+
 _get_random_port() {
     local randomPort
     # Try shuf first (Linux), then use alternative methods
@@ -452,49 +487,6 @@ _is_already_in_use() {
     _is_bind "$port" | grep -qs -v "$progress"
 }
 
-# 生成 clashctl-tui 配置文件内容（RON 格式）
-# 参数：服务器名称、URL、密钥（可选）
-_generate_clashctl_config() {
-    local name=$1
-    local url=$2
-    local secret=$3
-
-    # RON 格式要求：密钥为空时用 None，有值时用 Some("value")
-    local secret_value="None,"
-    if [ -n "$secret" ]; then
-        secret_value="Some(\"$secret\"),"
-    fi
-
-    cat <<EOFRON
-(
-  servers: [
-    (
-      name: "$name",
-      url: "$url",
-      secret: $secret_value
-    ),
-  ],
-  using: Some("$url"),
-  tui: (
-    log_file: None,
-  ),
-  sort: (
-    connections: (
-      by: time,
-      order: descendant,
-    ),
-    rules: (
-      by: payload,
-      order: descendant,
-    ),
-    proxies: (
-      by: delay,
-      order: ascendant,
-    ),
-  ),
-)
-EOFRON
-}
 
 # Removed _is_root function - not needed in userspace
 
@@ -663,6 +655,23 @@ _build_clash_tui() {
 
     chmod +x "$dest"
     _okcat "内置 TUI 构建完成"
+}
+
+_install_tui_from_source() {
+    _okcat "从源码构建 TUI..."
+
+    # 复制 TUI 源码
+    mkdir -p "$MIHOMO_TUI_SRC_DIR"
+    cp -rf "$SCRIPT_DIR"/cmd "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
+    cp -rf "$SCRIPT_DIR"/internal "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
+    cp "$SCRIPT_DIR"/go.mod "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
+    [ -f "$SCRIPT_DIR"/go.sum ] && cp "$SCRIPT_DIR"/go.sum "$MIHOMO_TUI_SRC_DIR"/ 2>/dev/null || true
+
+    if command -v go >/dev/null 2>&1; then
+        _build_clash_tui "$MIHOMO_TUI_SRC_DIR" "$MIHOMO_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'clash tui' 时重试"
+    else
+        _failcat "未检测到 Go，首次执行 'clash tui' 前需要先安装 Go 以构建内置 TUI"
+    fi
 }
 
 _download_convert_config() {

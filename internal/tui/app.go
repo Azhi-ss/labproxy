@@ -29,7 +29,7 @@ func NewApp(client *mihomo.Client, opts Options) *App {
 	return &App{client: client, opts: opts}
 }
 
-func (a *App) Run() error {
+func (a *App) Run(ctx context.Context) error {
 	m := newModel(a.client, a.opts)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

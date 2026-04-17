@@ -69,17 +69,25 @@ cp "$RESOURCES_BASE_DIR"/*.yaml "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.mmdb "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.dat "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 
-# 复制内置 TUI 源码，并尽量在安装时完成构建
-mkdir -p "$MIHOMO_TUI_SRC_DIR"
-cp -rf "$SCRIPT_DIR"/cmd "$MIHOMO_TUI_SRC_DIR"/
-cp -rf "$SCRIPT_DIR"/internal "$MIHOMO_TUI_SRC_DIR"/
-cp "$SCRIPT_DIR"/go.mod "$MIHOMO_TUI_SRC_DIR"/
-[ -f "$SCRIPT_DIR"/go.sum ] && cp "$SCRIPT_DIR"/go.sum "$MIHOMO_TUI_SRC_DIR"/
-
-if command -v go >/dev/null 2>&1; then
-    _build_clash_tui "$MIHOMO_TUI_SRC_DIR" "$MIHOMO_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'clash tui' 时重试"
+# 优先使用预编译的 TUI，回退到源码构建
+if _get_tui_archive && [ -n "$ZIP_CLASH_TUI" ]; then
+    _okcat '⏳' '解压预编译 TUI...'
+    mkdir -p "$(dirname "$MIHOMO_TUI_BIN")"
+    if tar -xzf "$ZIP_CLASH_TUI" -C "$(dirname "$MIHOMO_TUI_BIN")"; then
+        # 重命名二进制文件（去掉架构后缀）
+        local tui_bin_name
+        tui_bin_name=$(basename "$ZIP_CLASH_TUI" .tar.gz)
+        if [ -f "$(dirname "$MIHOMO_TUI_BIN")/$tui_bin_name" ]; then
+            mv "$(dirname "$MIHOMO_TUI_BIN")/$tui_bin_name" "$MIHOMO_TUI_BIN"
+        fi
+        chmod +x "$MIHOMO_TUI_BIN"
+        _okcat '✅' '预编译 TUI 安装完成'
+    else
+        _failcat '⚠️' '解压预编译 TUI 失败，回退到源码构建'
+        _install_tui_from_source
+    fi
 else
-    _failcat "未检测到 Go，首次执行 'clash tui' 前需要先安装 Go 以构建内置 TUI"
+    _install_tui_from_source
 fi
 
 # 解压 zashboard UI
