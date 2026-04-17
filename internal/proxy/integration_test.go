@@ -221,6 +221,40 @@ func TestIntegration_SwitchProxy(t *testing.T) {
 	}
 }
 
+func TestIntegration_UpdateMode(t *testing.T) {
+	var receivedMode string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/configs" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		receivedMode = req.Mode
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	if err := client.UpdateMode(context.Background(), "direct"); err != nil {
+		t.Fatalf("UpdateMode() error = %v", err)
+	}
+	if receivedMode != "direct" {
+		t.Errorf("received mode = %q, want %q", receivedMode, "direct")
+	}
+}
+
 func TestIntegration_WithSecret(t *testing.T) {
 	const testSecret = "my-test-secret-12345"
 	var authHeader string

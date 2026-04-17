@@ -67,3 +67,9 @@ build/
 .env.local
 .env.*.local
 .omx/
+
+# AI assistant work directories and context files
+.codebuddy/
+.claude/
+CLAUDE.md
+CODEBUDDY.md

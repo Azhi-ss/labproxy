@@ -15,6 +15,10 @@ _set_system_proxy() {
     local socks_proxy_addr="socks5h://${auth}127.0.0.1:${MIXED_PORT}"
     local no_proxy_addr="localhost,127.0.0.1,::1"
 
+    # Save pre-existing proxy values so we can restore them when labproxy proxy is turned off
+    # (e.g. Windows autoProxy in WSL mirrored mode)
+    _save_external_proxy
+
     export http_proxy=$http_proxy_addr
     export https_proxy=$http_proxy
     export HTTP_PROXY=$http_proxy
@@ -35,14 +39,18 @@ _set_system_proxy() {
 }
 
 _unset_system_proxy() {
-    unset http_proxy
-    unset https_proxy
-    unset HTTP_PROXY
-    unset HTTPS_PROXY
-    unset all_proxy
-    unset ALL_PROXY
-    unset no_proxy
-    unset NO_PROXY
+    # Restore external proxy (e.g. Windows autoProxy in WSL mirrored mode)
+    # if one was saved before labproxy overwrote it.
+    if ! _restore_external_proxy; then
+        unset http_proxy
+        unset https_proxy
+        unset HTTP_PROXY
+        unset HTTPS_PROXY
+        unset all_proxy
+        unset ALL_PROXY
+        unset no_proxy
+        unset NO_PROXY
+    fi
 
     # Ensure mixin config exists and update using user permissions
     mkdir -p "$(dirname "$LABPROXY_CONFIG_MIXIN")"
@@ -125,20 +133,103 @@ _verify_actual_ports() {
     fi
 }
 
-watch_proxy() {
-    # 新开交互式shell，且无代理变量时
-    [ -z "$http_proxy" ] && [[ $- == *i* ]] && {
-        # 检查用户是否启用系统代理
-        local system_proxy_status=$("$BIN_YQ" '.system-proxy.enable // true' "$LABPROXY_CONFIG_MIXIN" 2>/dev/null)
+# Detect if current proxy is injected by WSL mirrored mode autoProxy
+_is_wsl_auto_proxy() {
+    # Only relevant in WSL with mirrored networking and autoProxy enabled
+    [ -n "$http_proxy" ] || return 1
+    [ -f /proc/version ] || return 1
+    grep -qi microsoft /proc/version 2>/dev/null || return 1
 
-        # 仅当用户启用系统代理且 labproxy 进程运行时，自动写入环境变量
-        if [ "$system_proxy_status" = "true" ] && is_labproxy_running; then
-            _get_proxy_port
-            _get_ui_port
-            _get_dns_port
-            _set_system_proxy
-        fi
-    }
+    # Check if .wslconfig has autoProxy=true (via /mnt/c/Users/*/.wslconfig)
+    local found_auto_proxy=false
+    local wslconfig
+    for wslconfig in /mnt/c/Users/*/.wslconfig; do
+        [ -f "$wslconfig" ] || continue
+        grep -qi 'autoProxy.*true' "$wslconfig" 2>/dev/null && {
+            found_auto_proxy=true
+            break
+        }
+    done
+
+    [ "$found_auto_proxy" = "true" ]
+}
+
+# External proxy state file (for saving/restoring Windows autoProxy etc.)
+_EXTERNAL_PROXY_STATE="${LABPROXY_HOME_DIR}/config/external-proxy.state"
+
+# Save current proxy environment variables as "external" before labproxy overwrites them
+_save_external_proxy() {
+    [ -z "$http_proxy" ] && return 0
+
+    # Don't save if current proxy is labproxy's own proxy
+    _get_proxy_port
+    case "$http_proxy" in
+        *"127.0.0.1:${MIXED_PORT}"*|*"localhost:${MIXED_PORT}"*)
+            # This is already labproxy's proxy, skip
+            return 0
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$_EXTERNAL_PROXY_STATE")"
+    cat > "$_EXTERNAL_PROXY_STATE" <<PROXYEOF
+http_proxy=${http_proxy}
+https_proxy=${https_proxy}
+HTTP_PROXY=${HTTP_PROXY}
+HTTPS_PROXY=${HTTPS_PROXY}
+all_proxy=${all_proxy}
+ALL_PROXY=${ALL_PROXY}
+no_proxy=${no_proxy}
+NO_PROXY=${NO_PROXY}
+PROXYEOF
+}
+
+# Restore previously saved external proxy, return 1 if nothing to restore
+_restore_external_proxy() {
+    [ -f "$_EXTERNAL_PROXY_STATE" ] || return 1
+
+    # Read and export saved values
+    while IFS='=' read -r key value; do
+        [ -n "$key" ] && [ -n "$value" ] && export "$key=$value"
+    done < "$_EXTERNAL_PROXY_STATE"
+
+    rm -f "$_EXTERNAL_PROXY_STATE"
+    [ -n "$http_proxy" ] && _okcat '🔄' "已恢复外部代理: $http_proxy"
+    return 0
+}
+
+watch_proxy() {
+    # 新开交互式shell时
+    [[ $- == *i* ]] || return 0
+
+    # 检查用户是否启用系统代理
+    local system_proxy_status=$("$BIN_YQ" '.system-proxy.enable // true' "$LABPROXY_CONFIG_MIXIN" 2>/dev/null)
+    [ "$system_proxy_status" = "true" ] || return 0
+
+    # 仅当 labproxy 进程运行时才设置代理
+    is_labproxy_running || return 0
+
+    _get_proxy_port
+    _get_ui_port
+    _get_dns_port
+
+    if [ -z "$http_proxy" ]; then
+        # 无现有代理，直接设置 labproxy 代理
+        _set_system_proxy
+    elif _is_wsl_auto_proxy; then
+        # WSL mirrored autoProxy 已注入 Windows 代理
+        # 保存 Windows 代理，然后覆盖为 labproxy 代理
+        _okcat '🔄' "检测到 Windows autoProxy ($http_proxy)，已切换为 labproxy 代理 (端口 ${MIXED_PORT})"
+        _save_external_proxy
+        local auth=$("$BIN_YQ" '.authentication[0] // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
+        [ -n "$auth" ] && auth=$auth@
+        export http_proxy="http://${auth}127.0.0.1:${MIXED_PORT}"
+        export https_proxy=$http_proxy
+        export HTTP_PROXY=$http_proxy
+        export HTTPS_PROXY=$http_proxy
+        export all_proxy="socks5h://${auth}127.0.0.1:${MIXED_PORT}"
+        export ALL_PROXY=$all_proxy
+    fi
+    # 如果 http_proxy 已有值且非 autoProxy，说明用户手动设置了其他代理，不覆盖
 }
 
 function labproxyoff() {
@@ -364,9 +455,12 @@ function labproxyui() {
 function labproxytui() {
     local clash_tui_bin="${LABPROXY_TUI_BIN}"
 
-    # 懒加载: 首次使用时构建内置 TUI
-    if [ ! -x "$clash_tui_bin" ]; then
-        _build_clash_tui || return 1
+    # 懒加载 / 能力升级: 首次使用时构建，或检测到旧版二进制时自动重建
+    if ! _ensure_tui_binary "$clash_tui_bin"; then
+        if [ ! -x "$clash_tui_bin" ]; then
+            return 1
+        fi
+        _failcat '⚠️' '当前 TUI 二进制较旧，将以兼容模式启动（Apply / Restart 不可用）'
     fi
 
     # 确保 mihomo 运行
@@ -388,12 +482,21 @@ function labproxytui() {
     # 生成配置并启动 TUI
     local endpoint="http://127.0.0.1:${UI_PORT}"
     local api_secret=$("$BIN_YQ" '.secret // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
+    local restart_command="source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 
     _okcat "正在连接 $endpoint ..."
-    "$clash_tui_bin" \
-        --endpoint "$endpoint" \
-        --secret "$api_secret" \
-        --mixin-config "$LABPROXY_CONFIG_MIXIN"
+    if _tui_supports_restart_command "$clash_tui_bin"; then
+        "$clash_tui_bin" \
+            --endpoint "$endpoint" \
+            --secret "$api_secret" \
+            --mixin-config "$LABPROXY_CONFIG_MIXIN" \
+            --restart-command "$restart_command"
+    else
+        "$clash_tui_bin" \
+            --endpoint "$endpoint" \
+            --secret "$api_secret" \
+            --mixin-config "$LABPROXY_CONFIG_MIXIN"
+    fi
 }
 
 _merge_config_restart() {

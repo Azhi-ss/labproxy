@@ -208,16 +208,23 @@ labproxy lan off
 labproxy tui
 ```
 
-TUI 界面由本仓库内置维护，使用 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 实现并通过 `labproxy tui` 启动。首次使用时会在本地构建内置 TUI（二进制输出到 `~/.labproxy/bin/labproxy-tui`）。
+TUI 界面由本仓库内置维护，使用 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 实现并通过 `labproxy tui` 启动。安装时会优先使用 `resources/zip/` 下的预编译 TUI；若预编译包缺失或能力落后于当前源码，则会自动回退到本地源码构建（二进制输出到 `~/.labproxy/bin/labproxy-tui`）。
+
+> 维护者提示：如果修改了 `cmd/labproxy-tui/`、`internal/tui/` 或新增了 TUI CLI 参数，请执行 `VERSION=dev bash scripts/build-tui.sh` 重新生成并提交 `resources/zip/clash-tui-*.tar.gz`，否则安装时会提示“预编译 TUI 版本较旧，回退到源码构建”。
 
 功能特性：
 - 实时流量监控（上行/下行速度）
 - 代理分组与节点切换
+- 独立 Settings 面板（`mode` / `system proxy` / `allow-lan` / `tun`）
+- 连接列表面板，查看活跃连接与累计上下行
+- 代理模式快速切换（`rule/global/direct`）
+- system proxy 偏好开关（影响新 shell / 下次启动）
+- `allow-lan` / `tun` 配置持久化，并可在 TUI 内触发重启应用
 - 节点延迟测试
 - 搜索过滤分组和节点
 - 自适应终端宽度，支持窄终端
 
-> 提示：使用 `↑/↓` 或 `j/k` 导航，`Tab` 或 `←/→` 切换面板，`Enter` 选择节点，`r` 刷新延迟，`/` 搜索，`q` 退出。
+> 提示：使用 `↑/↓` 或 `j/k` 导航，`Tab` 或 `←/→` 切换 `Groups / Options / Settings`，`Enter` 执行当前项，`s` 聚焦 Settings，`r` 刷新延迟，`m` 切换代理模式，`p` 切换 system proxy 偏好，`/` 搜索，`q` 退出。
 
 #### 3.4 Web 控制台管理
 

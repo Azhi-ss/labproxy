@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"labproxy/internal/proxy"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestNewModel(t *testing.T) {
@@ -51,21 +54,40 @@ func TestInit(t *testing.T) {
 }
 
 func TestUpdate_WindowSizeMsg(t *testing.T) {
-	client := proxy.NewClient("http://localhost:9090", "")
-	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-
-	msg := tea.WindowSizeMsg{Width: 100, Height: 50}
-	newModel, cmd := m.Update(msg)
-
-	if cmd != nil {
-		t.Fatal("expected nil command for WindowSizeMsg")
+	tests := []struct {
+		name       string
+		width      int
+		height     int
+		wantWidth  int
+		wantHeight int
+		wantSearch int
+	}{
+		{name: "clamps zero", width: 0, height: 0, wantWidth: 1, wantHeight: 1, wantSearch: 12},
+		{name: "uses quarter width", width: 100, height: 50, wantWidth: 100, wantHeight: 50, wantSearch: 25},
+		{name: "caps search width", width: 160, height: 40, wantWidth: 160, wantHeight: 40, wantSearch: 28},
 	}
-	newM := newModel.(model)
-	if newM.width != 100 {
-		t.Fatalf("expected width 100, got %d", newM.width)
-	}
-	if newM.height != 50 {
-		t.Fatalf("expected height 50, got %d", newM.height)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := proxy.NewClient("http://localhost:9090", "")
+			m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+
+			newModel, cmd := m.Update(tea.WindowSizeMsg{Width: tt.width, Height: tt.height})
+			if cmd != nil {
+				t.Fatal("expected nil command for WindowSizeMsg")
+			}
+
+			newM := newModel.(model)
+			if newM.width != tt.wantWidth {
+				t.Fatalf("expected width %d, got %d", tt.wantWidth, newM.width)
+			}
+			if newM.height != tt.wantHeight {
+				t.Fatalf("expected height %d, got %d", tt.wantHeight, newM.height)
+			}
+			if newM.search.Width != tt.wantSearch {
+				t.Fatalf("expected search width %d, got %d", tt.wantSearch, newM.search.Width)
+			}
+		})
 	}
 }
 
@@ -229,6 +251,16 @@ func TestUpdate_KeyMsg_LeftRight(t *testing.T) {
 	if newM.focus != focusOptions {
 		t.Fatalf("expected focus to be options after right key, got %d", newM.focus)
 	}
+
+	// Right key again should switch to settings
+	newModel, cmd = newModel.Update(msgRight)
+	if cmd != nil {
+		t.Fatal("expected nil command for right key to settings")
+	}
+	newM = newModel.(model)
+	if newM.focus != focusSettings {
+		t.Fatalf("expected focus to be settings after second right key, got %d", newM.focus)
+	}
 }
 
 func TestUpdate_KeyMsg_UpDown(t *testing.T) {
@@ -298,6 +330,62 @@ func TestUpdate_KeyMsg_Search(t *testing.T) {
 	}
 }
 
+func TestUpdate_KeyMsg_SystemProxy(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+	_, cmd := m.Update(msg)
+	if cmd == nil {
+		t.Fatal("expected command for system proxy key")
+	}
+
+	result := cmd()
+	settingsMsg, ok := result.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg, got %T", result)
+	}
+	if !settingsMsg.data.systemProxyEnabled {
+		t.Fatal("expected system proxy to be enabled")
+	}
+
+	content, err := os.ReadFile(mixinPath)
+	if err != nil {
+		t.Fatalf("read mixin: %v", err)
+	}
+	if !strings.Contains(string(content), "enable: true") {
+		t.Fatalf("expected mixin to persist system proxy=true, got %q", string(content))
+	}
+}
+
+func TestActivateSettingCmd_AllowLanAndTun(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
+	m.focus = focusSettings
+
+	m.settingsIndex = 2 // Allow LAN
+	result := m.activateSettingCmd()()
+	allowLanMsg, ok := result.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg for allow-lan, got %T", result)
+	}
+	if !allowLanMsg.data.allowLanEnabled {
+		t.Fatal("expected allow-lan to be enabled")
+	}
+
+	m.settingsIndex = 3 // Tun
+	result = m.activateSettingCmd()()
+	tunMsg, ok := result.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg for tun, got %T", result)
+	}
+	if !tunMsg.data.tunEnabled {
+		t.Fatal("expected tun to be enabled")
+	}
+}
+
 func TestUpdate_KeyMsg_InSearchMode(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
@@ -327,7 +415,7 @@ func TestView_Loading(t *testing.T) {
 	}
 }
 
-func TestView_BasicRender(t *testing.T) {
+func newLayoutTestModel() model {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{
 		Endpoint:           "http://localhost:9090",
@@ -340,6 +428,35 @@ func TestView_BasicRender(t *testing.T) {
 	m.statusLine = "connected"
 	m.width = 120
 	m.height = 32
+	m.groups = []GroupView{
+		{
+			Name:    "GLOBAL",
+			Current: "Node-A",
+			Options: []OptionView{
+				{Name: "Node-A", Selected: true, DelayMS: 42},
+				{Name: "Node-B", DelayMS: 180},
+			},
+		},
+	}
+	m.connections = proxy.ConnectionsResponse{
+		DownloadTotal: 4096,
+		UploadTotal:   2048,
+		Connections: []proxy.Connection{
+			{
+				ID:       "conn-1",
+				Metadata: proxy.ConnectionMetadata{Host: "example.com", Destination: "1.1.1.1:443"},
+				Download: 2048,
+				Upload:   1024,
+				Chains:   []string{"Node-A"},
+				Rule:     "MATCH",
+			},
+		},
+	}
+	return m
+}
+
+func TestView_BasicRender(t *testing.T) {
+	m := newLayoutTestModel()
 
 	view := m.View()
 	if view == "" {
@@ -350,6 +467,55 @@ func TestView_BasicRender(t *testing.T) {
 	}
 	if !strings.Contains(view, "connected") {
 		t.Fatal("expected view to contain 'connected'")
+	}
+	if !strings.Contains(view, "Settings") {
+		t.Fatal("expected view to contain 'Settings'")
+	}
+	if !strings.Contains(view, "Connections") {
+		t.Fatal("expected view to contain 'Connections'")
+	}
+	if !strings.Contains(view, "example.com") {
+		t.Fatal("expected view to contain rendered connection target")
+	}
+}
+
+func TestView_SmallHeightHidesConnections(t *testing.T) {
+	m := newLayoutTestModel()
+	headerHeight := lipgloss.Height(m.renderHeader())
+	footerHeight := lipgloss.Height(m.renderFooter())
+	m.height = headerHeight + footerHeight + 5
+
+	view := m.View()
+	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") || !strings.Contains(view, "Settings") {
+		t.Fatal("expected compact body to keep three top panels")
+	}
+	if strings.Contains(view, "Connections") {
+		t.Fatal("expected connections panel to be hidden in small height")
+	}
+}
+
+func TestView_TinyHeightHidesBody(t *testing.T) {
+	m := newLayoutTestModel()
+	headerHeight := lipgloss.Height(m.renderHeader())
+	footerHeight := lipgloss.Height(m.renderFooter())
+	m.height = headerHeight + footerHeight
+
+	view := m.View()
+	if !strings.Contains(view, "connected") {
+		t.Fatal("expected header/footer content to remain visible")
+	}
+	if strings.Contains(view, "Groups") || strings.Contains(view, "Connections") {
+		t.Fatal("expected body panels to be hidden when no vertical space remains")
+	}
+}
+
+func TestRenderBody_TinyWidthReturnsEmpty(t *testing.T) {
+	m := newLayoutTestModel()
+	m.width = docStyle.GetHorizontalFrameSize()
+
+	body := m.renderBody(6)
+	if strings.TrimSpace(body) != "" {
+		t.Fatalf("expected empty body for tiny width, got %q", body)
 	}
 }
 
@@ -367,11 +533,16 @@ func TestToggleFocus(t *testing.T) {
 	}
 
 	m.toggleFocus()
-	if m.focus != focusGroups {
-		t.Fatalf("expected focus to be groups, got %d", m.focus)
+	if m.focus != focusSettings {
+		t.Fatalf("expected focus to be settings, got %d", m.focus)
 	}
-	if m.statusLine != "focus: groups" {
-		t.Fatalf("expected status line 'focus: groups', got %q", m.statusLine)
+	if m.statusLine != "focus: settings" {
+		t.Fatalf("expected status line 'focus: settings', got %q", m.statusLine)
+	}
+
+	m.toggleFocus()
+	if m.focus != focusGroups {
+		t.Fatalf("expected focus to cycle back to groups, got %d", m.focus)
 	}
 }
 
@@ -487,6 +658,24 @@ func TestFallback(t *testing.T) {
 		result := fallback(tt.input, tt.alt)
 		if result != tt.expected {
 			t.Fatalf("fallback(%q, %q): expected %q, got %q", tt.input, tt.alt, tt.expected, result)
+		}
+	}
+}
+
+func TestNextMode(t *testing.T) {
+	tests := []struct {
+		current  string
+		expected string
+	}{
+		{"rule", "global"},
+		{"global", "direct"},
+		{"direct", "rule"},
+		{"", "global"},
+	}
+
+	for _, tt := range tests {
+		if got := nextMode(tt.current); got != tt.expected {
+			t.Fatalf("nextMode(%q): expected %q, got %q", tt.current, tt.expected, got)
 		}
 	}
 }
@@ -632,5 +821,10 @@ func TestFocusLabel(t *testing.T) {
 	m.focus = focusOptions
 	if m.focusLabel() != "options" {
 		t.Fatalf("focusLabel(): expected 'options', got %q", m.focusLabel())
+	}
+
+	m.focus = focusSettings
+	if m.focusLabel() != "settings" {
+		t.Fatalf("focusLabel(): expected 'settings', got %q", m.focusLabel())
 	}
 }

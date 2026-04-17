@@ -372,6 +372,55 @@ func TestSwitchProxy_WithSecret(t *testing.T) {
 	}
 }
 
+func TestUpdateMode(t *testing.T) {
+	var receivedMode string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/configs" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH method, got %s", r.Method)
+		}
+
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		receivedMode = payload["mode"]
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	if err := client.UpdateMode(ctx, "global"); err != nil {
+		t.Fatalf("UpdateMode() error: %v", err)
+	}
+	if receivedMode != "global" {
+		t.Fatalf("expected mode 'global', got %q", receivedMode)
+	}
+}
+
+func TestUpdateMode_ErrorResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("mode not allowed"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	err := client.UpdateMode(ctx, "global")
+	if err == nil {
+		t.Fatal("expected error for failed mode update")
+	}
+	if !strings.Contains(err.Error(), "update mode failed") {
+		t.Fatalf("expected error message to contain 'update mode failed', got %q", err.Error())
+	}
+}
+
 func TestHTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -69,19 +69,23 @@ cp "$RESOURCES_BASE_DIR"/*.yaml "$LABPROXY_HOME_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.mmdb "$LABPROXY_HOME_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.dat "$LABPROXY_HOME_DIR/" 2>/dev/null || true
 
-# 优先使用预编译的 TUI，回退到源码构建
+# 优先使用预编译的 TUI，若能力不足则自动回退到源码构建
 if _get_tui_archive && [ -n "$ZIP_LABPROXY_TUI" ]; then
     _okcat '⏳' '解压预编译 TUI...'
     mkdir -p "$(dirname "$LABPROXY_TUI_BIN")"
     if tar -xzf "$ZIP_LABPROXY_TUI" -C "$(dirname "$LABPROXY_TUI_BIN")"; then
         # 重命名二进制文件（去掉架构后缀）
-        local tui_bin_name
         tui_bin_name=$(basename "$ZIP_LABPROXY_TUI" .tar.gz)
         if [ -f "$(dirname "$LABPROXY_TUI_BIN")/$tui_bin_name" ]; then
             mv "$(dirname "$LABPROXY_TUI_BIN")/$tui_bin_name" "$LABPROXY_TUI_BIN"
         fi
         chmod +x "$LABPROXY_TUI_BIN"
-        _okcat '✅' '预编译 TUI 安装完成'
+        if _tui_supports_restart_command "$LABPROXY_TUI_BIN"; then
+            _okcat '✅' '预编译 TUI 安装完成'
+        else
+            _failcat '⚠️' '预编译 TUI 版本较旧，回退到源码构建'
+            _install_tui_from_source
+        fi
     else
         _failcat '⚠️' '解压预编译 TUI 失败，回退到源码构建'
         _install_tui_from_source

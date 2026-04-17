@@ -42,7 +42,7 @@ for target in "${TARGETS[@]}"; do
     CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build \
         -ldflags "-s -w -X main.version=${VERSION}" \
         -o "$BUILD_DIR/$BIN_NAME" \
-        ./cmd/clash-tui
+        ./cmd/labproxy-tui
 
     # Package as tar.gz (or zip for Windows)
     ARCHIVE_NAME="clash-tui-${GOOS}-${GOARCH}.tar.gz"
@@ -59,3 +59,5 @@ done
 echo ""
 echo "Build complete! Binaries in $ZIP_DIR/"
 ls -lh "$ZIP_DIR/clash-tui-"*
+echo ""
+echo "Reminder: if TUI source or CLI flags changed, commit the refreshed resources/zip/clash-tui-*.tar.gz archives together with the code changes."

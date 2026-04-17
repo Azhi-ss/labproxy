@@ -13,9 +13,10 @@ import (
 
 func main() {
 	var (
-		endpoint    = flag.String("endpoint", "", "mihomo controller endpoint")
-		secret      = flag.String("secret", "", "mihomo controller secret")
-		mixinConfig = flag.String("mixin-config", "", "path to mixin config for system-proxy status")
+		endpoint       = flag.String("endpoint", "", "mihomo controller endpoint")
+		secret         = flag.String("secret", "", "mihomo controller secret")
+		mixinConfig    = flag.String("mixin-config", "", "path to mixin config for system-proxy status")
+		restartCommand = flag.String("restart-command", "", "shell command used to restart labproxy runtime")
 	)
 	flag.Parse()
 
@@ -33,6 +34,8 @@ func main() {
 	app := tui.NewApp(proxy.NewClient(*endpoint, *secret), tui.Options{
 		Endpoint:           *endpoint,
 		SystemProxyEnabled: systemProxyEnabled,
+		MixinConfigPath:    *mixinConfig,
+		RestartCommand:     *restartCommand,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

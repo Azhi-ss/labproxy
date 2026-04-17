@@ -136,6 +136,35 @@ func (c *Client) SwitchProxy(ctx context.Context, groupName, proxyName string) e
 	return nil
 }
 
+func (c *Client) UpdateMode(ctx context.Context, mode string) error {
+	payload, err := json.Marshal(map[string]string{"mode": mode})
+	if err != nil {
+		return fmt.Errorf("marshal mode payload: %w", err)
+	}
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint.Path = path.Join(endpoint.Path, "/configs")
+
+	req, err := c.newRequest(ctx, http.MethodPatch, endpoint.String(), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update mode failed: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 	req, err := c.newRequest(ctx, http.MethodGet, c.baseURL+endpoint, nil)
 	if err != nil {

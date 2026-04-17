@@ -39,6 +39,56 @@ _is_dir_writable() {
     [ -n "$dir" ] && [ -d "$dir" ] && [ -w "$dir" ] && [ -x "$dir" ]
 }
 
+_labproxy_tmpdir_candidates() {
+    local uid user_tag
+
+    uid=$(id -u 2>/dev/null || true)
+    user_tag=${USER:-${uid:-unknown}}
+
+    case "$uid" in
+    '' | *[!0-9]*)
+        ;;
+    *)
+        printf '%s\n' "/run/user/$uid/labproxy-tmp"
+        ;;
+    esac
+
+    printf '%s\n' "/dev/shm/labproxy-tmp-${user_tag}"
+    [ -n "$HOME" ] && printf '%s\n' "$HOME/.cache/labproxy/tmp"
+    [ -n "$LABPROXY_HOME_DIR" ] && printf '%s\n' "$LABPROXY_HOME_DIR/tmp"
+}
+
+_is_labproxy_tmpdir_path() {
+    local dir=$1
+    local candidate
+
+    [ -n "$dir" ] || return 1
+
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        [ "$dir" = "$candidate" ] && return 0
+    done <<EOF
+$(_labproxy_tmpdir_candidates)
+EOF
+
+    return 1
+}
+
+_cleanup_labproxy_tmpdirs() {
+    local dir
+
+    while IFS= read -r dir; do
+        [ -n "$dir" ] || continue
+        [ -e "$dir" ] || continue
+        _is_labproxy_tmpdir_path "$dir" || continue
+        rm -rf -- "$dir" 2>/dev/null || true
+    done <<EOF
+$(_labproxy_tmpdir_candidates)
+EOF
+
+    [ -n "$HOME" ] && rmdir "$HOME/.cache/labproxy" 2>/dev/null || true
+}
+
 _set_tmpdir_default() {
     # Respect user override if it is usable.
     if _is_dir_writable "$TMPDIR"; then
@@ -48,29 +98,9 @@ _set_tmpdir_default() {
         return 0
     fi
 
-    local uid
-    uid=$(id -u 2>/dev/null || true)
-
     local candidate
-    case "$uid" in
-    '' | *[!0-9]*)
-        ;;
-    *)
-        if _is_dir_writable "/run/user/$uid"; then
-            candidate="/run/user/$uid/labproxy-tmp"
-            mkdir -p "$candidate" 2>/dev/null || true
-            if _is_dir_writable "$candidate"; then
-                export TMPDIR="$candidate"
-                export TMP="$TMPDIR"
-                export TEMP="$TMPDIR"
-                return 0
-            fi
-        fi
-        ;;
-    esac
-
-    if _is_dir_writable "/dev/shm"; then
-        candidate="/dev/shm/labproxy-tmp-${USER:-$uid}"
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
         mkdir -p "$candidate" 2>/dev/null || true
         if _is_dir_writable "$candidate"; then
             export TMPDIR="$candidate"
@@ -78,29 +108,9 @@ _set_tmpdir_default() {
             export TEMP="$TMPDIR"
             return 0
         fi
-    fi
-
-    if _is_dir_writable "$HOME"; then
-        candidate="$HOME/.cache/labproxy/tmp"
-        mkdir -p "$candidate" 2>/dev/null || true
-        if _is_dir_writable "$candidate"; then
-            export TMPDIR="$candidate"
-            export TMP="$TMPDIR"
-            export TEMP="$TMPDIR"
-            return 0
-        fi
-    fi
-
-    if [ -n "$LABPROXY_HOME_DIR" ]; then
-        candidate="$LABPROXY_HOME_DIR/tmp"
-        mkdir -p "$candidate" 2>/dev/null || true
-        if _is_dir_writable "$candidate"; then
-            export TMPDIR="$candidate"
-            export TMP="$TMPDIR"
-            export TEMP="$TMPDIR"
-            return 0
-        fi
-    fi
+    done <<EOF
+$(_labproxy_tmpdir_candidates)
+EOF
 
     return 1
 }
@@ -631,7 +641,7 @@ _build_clash_tui() {
     _okcat "正在构建内置 TUI..."
     (
         cd "$source_dir" &&
-            GO111MODULE=on CGO_ENABLED=0 go build -o "$dest" ./cmd/clash-tui
+            GO111MODULE=on CGO_ENABLED=0 go build -o "$dest" ./cmd/labproxy-tui
     ) || {
         rm -f "$dest"
         _failcat "构建内置 TUI 失败"
@@ -640,6 +650,32 @@ _build_clash_tui() {
 
     chmod +x "$dest"
     _okcat "内置 TUI 构建完成"
+}
+
+_tui_supports_restart_command() {
+    local bin="${1:-$LABPROXY_TUI_BIN}"
+    [ -x "$bin" ] || return 1
+    "$bin" -h 2>&1 | grep -Fqs -- '-restart-command'
+}
+
+_ensure_tui_binary() {
+    local bin="${1:-$LABPROXY_TUI_BIN}"
+
+    if [ ! -x "$bin" ]; then
+        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
+    fi
+
+    if _tui_supports_restart_command "$bin"; then
+        return 0
+    fi
+
+    _failcat '⚠️' '检测到旧版 TUI 二进制，正在尝试重新构建...'
+    if command -v go >/dev/null 2>&1 && [ -f "$LABPROXY_TUI_SRC_DIR/go.mod" ]; then
+        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
+        _tui_supports_restart_command "$bin" && return 0
+    fi
+
+    return 1
 }
 
 _install_tui_from_source() {
