@@ -3,6 +3,10 @@
 <img src="resources/hero-banner.png" alt="LabProxy Banner" width="100%"/>
 
 <p align="center">
+  <strong>简体中文</strong> | <a href="./README.en.md">English</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/Azhi-ss/labproxy/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/Azhi-ss/labproxy" alt="License">
   </a>
