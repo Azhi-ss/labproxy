@@ -1,7 +1,7 @@
 # LabProxy - 实验室科学上网工具
 
-![GitHub License](https://img.shields.io/github/license/SaladDay/labproxy)
-![GitHub top language](https://img.shields.io/github/languages/top/SaladDay/labproxy)
+![GitHub License](https://img.shields.io/github/license/Azhi-ss/labproxy)
+![GitHub top language](https://img.shields.io/github/languages/top/Azhi-ss/labproxy)
 
 <table>
   <tr>
@@ -54,7 +54,7 @@ LabProxy 完美解决了这些问题。
 #### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Saladday/labproxy.git
+git clone https://github.com/Azhi-ss/labproxy.git
 cd labproxy
 ```
 
@@ -379,4 +379,4 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=SaladDay/labproxy&type=Date)](https://www.star-history.com/#SaladDay/labproxy&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Azhi-ss/labproxy&type=Date)](https://www.star-history.com/#Azhi-ss/labproxy&Date)
