@@ -306,16 +306,12 @@ function _get_tui_archive() {
     esac
 
     # 查找匹配的预编译 TUI
-    local candidate=
-    for candidate in \
-        "${ZIP_BASE_DIR}/labproxy-tui-${os}-${arch}.tar.gz" \
-        "${ZIP_BASE_DIR}/clash-tui-${os}-${arch}.tar.gz"; do
-        if [ -f "$candidate" ]; then
-            ZIP_LABPROXY_TUI="$candidate"
-            _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
-            return 0
-        fi
-    done
+    local candidate="${ZIP_BASE_DIR}/labproxy-tui-${os}-${arch}.tar.gz"
+    if [ -f "$candidate" ]; then
+        ZIP_LABPROXY_TUI="$candidate"
+        _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
+        return 0
+    fi
 
     # 没有找到预编译版本
     ZIP_LABPROXY_TUI=""

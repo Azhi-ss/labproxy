@@ -319,7 +319,7 @@ esac
 SCRIPT
     chmod +x "$dest/yq_linux_amd64"
     ;;
-labproxy-tui-*.tar.gz|clash-tui-*.tar.gz)
+labproxy-tui-*.tar.gz)
     cat > "$dest/$name" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
