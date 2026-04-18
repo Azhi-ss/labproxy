@@ -181,10 +181,6 @@ A: `labproxy lan on` 开启后，其他设备设置代理为 `http://<本机IP>:
 
 基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 二次开发。
 
-## 致谢
-
-本项目受到 [LINUX DO](https://linux.do/) 社区的启发和支持。
-
 ## License
 
 [MIT License](LICENSE)
@@ -194,3 +190,7 @@ A: `labproxy lan on` 开启后，其他设备设置代理为 `http://<本机IP>:
 <p align="center">
   如果这个工具对你有帮助，请给我们一颗 ⭐ <a href="https://github.com/Azhi-ss/labproxy">Star</a>
 </p>
+
+## 致谢
+
+本项目受到 [LINUX DO](https://linux.do/) 社区的启发和支持。
