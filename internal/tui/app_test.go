@@ -462,8 +462,8 @@ func TestView_BasicRender(t *testing.T) {
 	if view == "" {
 		t.Fatal("expected non-empty view")
 	}
-	if !strings.Contains(view, "Clash TUI") {
-		t.Fatal("expected view to contain 'Clash TUI'")
+	if !strings.Contains(view, "LabProxy TUI") {
+		t.Fatal("expected view to contain 'LabProxy TUI'")
 	}
 	if !strings.Contains(view, "connected") {
 		t.Fatal("expected view to contain 'connected'")

@@ -384,7 +384,7 @@ test_labproxytui_builds_and_launches_first_party_binary() {
 
     labproxytui
 
-    assert_file_contains "$ACTION_LOG" "build_clash_tui"
+    assert_file_contains "$ACTION_LOG" "build_labproxy_tui"
     assert_file_contains "$ACTION_LOG" "verify_actual_ports"
     assert_file_contains "$ACTION_LOG" "labproxy_tui:--endpoint http://127.0.0.1:5555"
     assert_file_contains "$ACTION_LOG" "--mixin-config $LABPROXY_CONFIG_MIXIN"

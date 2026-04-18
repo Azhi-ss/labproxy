@@ -284,7 +284,7 @@ function _get_kernel() {
     _okcat "安装内核：$BIN_KERNEL_NAME"
 }
 
-# 检测并选择预编译的 clash-tui 压缩包
+# 检测并选择预编译的 labproxy-tui 压缩包
 function _get_tui_archive() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local arch=$(uname -m)
@@ -306,12 +306,16 @@ function _get_tui_archive() {
     esac
 
     # 查找匹配的预编译 TUI
-    local candidate="${ZIP_BASE_DIR}/clash-tui-${os}-${arch}.tar.gz"
-    if [ -f "$candidate" ]; then
-        ZIP_LABPROXY_TUI="$candidate"
-        _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
-        return 0
-    fi
+    local candidate=
+    for candidate in \
+        "${ZIP_BASE_DIR}/labproxy-tui-${os}-${arch}.tar.gz" \
+        "${ZIP_BASE_DIR}/clash-tui-${os}-${arch}.tar.gz"; do
+        if [ -f "$candidate" ]; then
+            ZIP_LABPROXY_TUI="$candidate"
+            _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
+            return 0
+        fi
+    done
 
     # 没有找到预编译版本
     ZIP_LABPROXY_TUI=""
@@ -662,7 +666,7 @@ _ensure_tui_binary() {
     local bin="${1:-$LABPROXY_TUI_BIN}"
 
     if [ ! -x "$bin" ]; then
-        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
+        _build_labproxy_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
     fi
 
     if _tui_supports_restart_command "$bin"; then
@@ -671,7 +675,7 @@ _ensure_tui_binary() {
 
     _failcat '⚠️' '检测到旧版 TUI 二进制，正在尝试重新构建...'
     if command -v go >/dev/null 2>&1 && [ -f "$LABPROXY_TUI_SRC_DIR/go.mod" ]; then
-        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
+        _build_labproxy_tui "$LABPROXY_TUI_SRC_DIR" "$bin" || return 1
         _tui_supports_restart_command "$bin" && return 0
     fi
 

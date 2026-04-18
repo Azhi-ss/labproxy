@@ -453,11 +453,11 @@ function labproxyui() {
 }
 
 function labproxytui() {
-    local clash_tui_bin="${LABPROXY_TUI_BIN}"
+    local tui_bin="${LABPROXY_TUI_BIN}"
 
     # 懒加载 / 能力升级: 首次使用时构建，或检测到旧版二进制时自动重建
-    if ! _ensure_tui_binary "$clash_tui_bin"; then
-        if [ ! -x "$clash_tui_bin" ]; then
+    if ! _ensure_tui_binary "$tui_bin"; then
+        if [ ! -x "$tui_bin" ]; then
             return 1
         fi
         _failcat '⚠️' '当前 TUI 二进制较旧，将以兼容模式启动（Apply / Restart 不可用）'
@@ -485,14 +485,14 @@ function labproxytui() {
     local restart_command="source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 
     _okcat "正在连接 $endpoint ..."
-    if _tui_supports_restart_command "$labproxy_tui_bin"; then
-        "$labproxy_tui_bin" \
+    if _tui_supports_restart_command "$tui_bin"; then
+        "$tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
             --mixin-config "$LABPROXY_CONFIG_MIXIN" \
             --restart-command "$restart_command"
     else
-        "$labproxy_tui_bin" \
+        "$tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
             --mixin-config "$LABPROXY_CONFIG_MIXIN"

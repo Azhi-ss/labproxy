@@ -11,7 +11,10 @@ _valid_env || exit 1
 labproxyctl off >&/dev/null
 
 # 移除用户级定时任务
-crontab -l 2>/dev/null | grep -v 'labproxyctl_auto_update' | crontab - 2>/dev/null
+if existing_crontab="$(crontab -l 2>/dev/null)"; then
+    filtered_crontab="$(printf '%s\n' "$existing_crontab" | grep -v 'labproxyctl_auto_update' || true)"
+    printf '%s\n' "$filtered_crontab" | crontab - 2>/dev/null
+fi
 
 # 清理 shell 配置
 _set_rc unset

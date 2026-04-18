@@ -746,7 +746,7 @@ func (m model) renderHeader() string {
 	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
 	titleRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		titleStyle.Render("Clash TUI"),
+		titleStyle.Render("LabProxy TUI"),
 		"  ",
 		subtitleStyle.Render("3-pane dashboard · s settings · enter apply"),
 	)
