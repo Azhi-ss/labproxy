@@ -1,404 +1,190 @@
-# LabProxy - 实验室科学上网工具
-
-![GitHub License](https://img.shields.io/github/license/Azhi-ss/labproxy)
-![GitHub top language](https://img.shields.io/github/languages/top/Azhi-ss/labproxy)
+# LabProxy
 
 <img src="resources/hero-banner.png" alt="LabProxy Banner" width="100%"/>
 
-## 项目简介
+<p align="center">
+  <a href="https://github.com/Azhi-ss/labproxy/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Azhi-ss/labproxy" alt="License">
+  </a>
+  <img src="https://img.shields.io/github/languages/top/Azhi-ss/labproxy" alt="Language">
+</p>
 
-LabProxy 是专为实验室环境设计的科学上网解决方案，基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 项目进行二次开发。
+<p align="center"><b>专为实验室/共享服务器设计的用户空间代理管理工具</b></p>
 
-<img src="resources/concept.png" alt="概念示意" width="600" align="right"/>
+---
 
-### 为什么选择 LabProxy？
+## 为什么需要 LabProxy？
 
-### 为什么选择 LabProxy？
+| 传统方案 | LabProxy |
+|---------|---------|
+| 需要 sudo 权限 | ✅ 纯用户空间，无需 root |
+| 依赖 GUI 或 systemd | ✅ 纯命令行，PID 文件管理 |
+| 端口冲突导致启动失败 | ✅ 自动检测并分配可用端口 |
+| 多用户环境配置冲突 | ✅ 完全隔离的用户目录 |
 
-实验室用户通常面临以下困难：
+<img src="resources/concept.png" alt="概念示意" width="500" align="right"/>
 
-- **无 sudo 权限**：无法安装系统级服务或修改系统配置
-- **无 GUI 环境**：只能通过命令行操作，无法使用图形界面工具
-- **端口冲突频繁**：多用户共享服务器，常用端口经常被占用
+**LabProxy** 基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 二次开发，针对实验室场景优化：
 
-LabProxy 完美解决了这些问题。
+- **无特权安装** — 安装到 `~/.labproxy/`，普通用户即可使用
+- **智能端口** — 7890/9090 被占用？自动寻找可用端口
+- **TUI 界面** — 终端下的图形化管理，实时流量/节点/连接
+- **Web 控制台** — 浏览器管理，支持密钥保护
+- **自动订阅转换** — 内置 subconverter，兼容各种订阅格式
 
-### 核心特性
-
-- **用户空间运行**：无需 `sudo` 权限，安装到用户目录 `~/.labproxy/`
-- **智能端口管理**：自动检测端口冲突并分配可用端口，支持固定端口模式
-- **局域网访问控制**：支持开启/关闭局域网访问，方便多设备共享代理
-- **TUI 交互式界面**：终端下的图形化管理界面，实时监控流量和连接状态
-- **命令行操作**：完全基于命令行，适合无 GUI 环境
-- **多架构支持**：适配主流 Linux 发行版（CentOS、Debian、Ubuntu 等）
-- **进程管理**：基于 PID 文件管理，无需 systemd 服务
-- **订阅转换**：自动使用 [subconverter](https://github.com/tindy2013/subconverter) 进行本地订阅转换
-
-⚡️ 提供一种优雅的方式，一键式脚本安装代理工具。
+---
 
 ## 快速开始
 
-### 环境要求
-
-- **用户权限**：普通用户权限即可，**无需 sudo 或 root**
-- **Shell 支持**：`bash`、`zsh`、`fish`
-- **代理订阅**：需要有效的 Clash 订阅链接
-
-### 安装步骤
-
-#### 1. 克隆项目
-
 ```bash
-git clone https://github.com/Azhi-ss/labproxy.git
-cd labproxy
-```
-
-#### 2. 运行安装脚本
-
-```bash
+# 1. 克隆并安装
+git clone https://github.com/Azhi-ss/labproxy.git && cd labproxy
 bash install.sh
-```
 
-> 默认会安装在 `~/.labproxy/` 目录下
-
-安装过程中会：
-
-- 自动检测系统架构
-- 下载适配的 mihomo 内核
-- 配置用户环境变量
-- 设置命令行别名
-- 检测并分配可用端口
-
-#### 3. 配置订阅
-
-安装完成后，设置你的代理订阅：
-
-```bash
+# 2. 配置订阅（必须）
 labproxy subscribe https://your-subscription-url
-```
 
-#### 4. 启动代理
-
-```bash
+# 3. 启动
 labproxy on
-```
 
-### 验证安装
-
-```bash
-# 检查服务状态
-labproxy status
-
-# 测试网络连接
+# 4. 验证
 curl -I https://www.google.com
 ```
 
-## 使用教程
-
-### 1. 基本命令
-
-执行 `labproxy help` 查看所有可用命令：
-
-```bash
-$ labproxy help
-Usage:
-    labproxy COMMAND  [OPTION]
-
-Commands:
-    on                      开启代理
-    off                     关闭代理
-    restart                 重启代理服务
-    proxy    [on|off|status]       系统代理环境变量
-    port     [status|auto|set]     代理端口模式设置
-    ui                      Web 控制台地址
-    tui                     TUI 交互式界面
-    status                  进程运行状态
-    tun      [on|off|status]       Tun 模式 (需要权限)
-    lan      [on|off|status]       局域网访问控制
-    mixin    [-e|-r]        Mixin 配置文件
-    secret   [SECRET]       Web 控制台密钥
-    subscribe [URL]         设置或查看订阅地址
-    update   [auto|log]     更新订阅配置
-
-
-```
-
-### 2. 使用流程
-
-#### 2.1 启动代理服务
-
-```bash
-labproxy on
-```
-
-#### 2.2 检查运行状态
-
-```bash
-# 查看详细状态信息
-labproxy status
-
-# 输出示例：
-# 😼 订阅地址: https://your-subscription-url
-# 😼 labproxy 进程状态: 运行中
-# 😼 进程 PID: 276368
-# 😼 运行时间: 04:53
-# 😼 配置文件: ~/.labproxy/runtime.yaml
-# 😼 日志文件: ~/.labproxy/logs/labproxy.log
-# 😼 代理端口: 54016
-# 😼 管理端口: 19090
-# 😼 DNS端口: 15353
-# 😼 系统代理：开启
-# http_proxy： http://127.0.0.1:54016
-# socks_proxy：socks5h://127.0.0.1:54016
-```
-
-#### 2.3 停止代理服务
-
-```bash
-# 停止代理
-labproxy off
-```
-
-### 3. 高级功能
-
-#### 3.1 固定代理端口
-
-```bash
-# 查看当前端口模式和端口
-labproxy port status
-
-# 固定代理端口（如 7890），如遇冲突可按提示重新输入或切换自动
-labproxy port set 7890
-
-# 切换回自动分配端口
-labproxy port auto
-```
-
-#### 3.2 局域网访问控制
-
-```bash
-# 查看局域网访问状态
-labproxy lan status
-
-# 开启局域网访问（允许其他设备通过本机 IP 使用代理）
-labproxy lan on
-
-# 关闭局域网访问（仅本机可用）
-labproxy lan off
-```
-
-开启局域网访问后，其他设备可以通过以下方式使用代理：
-- HTTP 代理：`http://your-server-ip:port`
-- SOCKS5 代理：`socks5://your-server-ip:port`
-
-> 注意：开启局域网访问前，请确保网络环境安全，避免代理被未授权使用。
-
-#### 3.3 TUI 交互式界面
-
-```bash
-# 启动 TUI 界面
-labproxy tui
-```
-
-TUI 界面由本仓库内置维护，使用 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 实现并通过 `labproxy tui` 启动。安装时会优先使用 `resources/zip/` 下的预编译 TUI；若预编译包缺失或能力落后于当前源码，则会自动回退到本地源码构建（二进制输出到 `~/.labproxy/bin/labproxy-tui`）。
-
-> 维护者提示：如果修改了 `cmd/labproxy-tui/`、`internal/tui/` 或新增了 TUI CLI 参数，请执行 `VERSION=dev bash scripts/build-tui.sh` 重新生成并提交 `resources/zip/labproxy-tui-*.tar.gz`，否则安装时会提示"预编译 TUI 版本较旧，回退到源码构建"。
-
-功能特性：
-- 实时流量监控（上行/下行速度）
-- 代理分组与节点切换
-- 独立 Settings 面板（`mode` / `system proxy` / `allow-lan` / `tun`）
-- 连接列表面板，查看活跃连接与累计上下行
-- 代理模式快速切换（`rule/global/direct`）
-- system proxy 偏好开关（影响新 shell / 下次启动）
-- `allow-lan` / `tun` 配置持久化，并可在 TUI 内触发重启应用
-- 节点延迟测试
-- 搜索过滤分组和节点
-- 自适应终端宽度，支持窄终端
-
-> 提示：使用 `↑/↓` 或 `j/k` 导航，`Tab` 或 `←/→` 切换 `Groups / Options / Settings`，`Enter` 执行当前项，`s` 聚焦 Settings，`r` 刷新延迟，`m` 切换代理模式，`p` 切换 system proxy 偏好，`/` 搜索，`q` 退出。
-
-<img src="resources/tui-art.png" alt="TUI Art" width="100%" style="border-radius: 8px;"/>
-
 <details>
-<summary><b>真实界面截图</b></summary>
+<summary><b>📋 完整安装指南</b></summary>
 
-| 命令行界面 | TUI 交互式界面 |
-|:---:|:---:|
-| <img src="resources/image.png" alt="命令行界面" width="400"/> | <img src="resources/tui.png" alt="TUI 交互式界面" width="400"/> |
+**环境要求**
+- Shell: `bash` / `zsh` / `fish`
+- 权限: 普通用户（无需 sudo）
+- 依赖: 有效的 Clash 订阅链接
+
+**安装流程**
+```bash
+git clone https://github.com/Azhi-ss/labproxy.git
+cd labproxy
+bash install.sh        # 默认安装到 ~/.labproxy/
+```
+
+安装完成后自动配置：
+- 下载适配架构的 mihomo 内核
+- 配置 shell 环境变量
+- 设置命令别名
+- 检测并分配可用端口
 
 </details>
 
-#### 3.4 Web 控制台管理
+---
+
+## 核心命令
+
+```
+labproxy on              # 启动代理
+labproxy off             # 停止代理
+labproxy status          # 查看状态
+labproxy tui             # 打开 TUI 界面
+```
+
+| 命令 | 功能 |
+|-----|------|
+| `labproxy port [set <port>\|auto\|status]` | 固定端口 / 自动分配 |
+| `labproxy lan [on\|off\|status]` | 局域网访问控制 |
+| `labproxy proxy [on\|off\|status]` | 系统代理开关 |
+| `labproxy subscribe [URL]` | 设置/查看订阅 |
+| `labproxy update [auto]` | 更新订阅配置 |
+| `labproxy ui` | Web 控制台地址 |
+| `labproxy mixin [-e\|-r]` | 编辑/查看配置 |
+
+---
+
+## TUI 交互界面
 
 ```bash
-# 查看控制台地址
-labproxy ui
-
-# 设置访问密钥（推荐）
-labproxy secret your-password
-
-# 查看当前密钥
-labproxy secret
+labproxy tui
 ```
 
-通过浏览器访问 Web 控制台可以：
+<img src="resources/tui-art.png" alt="TUI" width="100%"/>
 
-- 切换代理节点
-- 查看实时日志
-- 监控流量统计
-- 测试节点延迟
+**快捷键**
+| 键位 | 功能 |
+|-----|------|
+| `↑/↓` 或 `j/k` | 导航 |
+| `Tab` / `←/→` | 切换面板 (Groups / Options / Settings) |
+| `Enter` | 执行 |
+| `s` | 聚焦 Settings |
+| `m` | 切换代理模式 |
+| `p` | 切换 system proxy |
+| `r` | 刷新延迟 |
+| `/` | 搜索 |
+| `q` | 退出 |
 
-#### 3.5 订阅管理
+<details>
+<summary><b>📸 真实界面截图</b></summary>
 
-```bash
-# 设置订阅地址
-labproxy subscribe https://your-subscription-url
+| CLI 命令行 | TUI 界面 |
+|:---:|:---:|
+| <img src="resources/image.png" width="400"/> | <img src="resources/tui.png" width="400"/> |
 
-# 查看当前订阅
-labproxy subscribe
+</details>
 
-# 更新订阅配置
-labproxy update
+> **维护者提示**：修改 TUI 源码后执行 `VERSION=dev bash scripts/build-tui.sh` 重新生成预编译包。
 
-# 设置自动更新（每2天）
-labproxy update auto
-```
+---
 
-#### 3.6 高级配置
-
-```bash
-# 编辑自定义配置（Mixin）
-labproxy mixin -e
-
-# 查看运行时配置
-labproxy mixin -r
-
-# 启用 TUN 模式（此功能目前尚在完善中，生产环境建议谨慎使用）
-labproxy tun on
-```
-
-**Mixin 配置说明**：
-
-Mixin 配置文件（`~/.labproxy/config/mixin.yaml`）用于自定义代理行为，支持以下配置：
-
-- `mode`：代理模式（rule/global/direct），默认为 rule 模式
-- `allow-lan`：局域网访问控制
-- `external-controller`：Web 控制台监听地址
-- 其他高级配置项
-
-通过 Web UI 修改的配置（如代理模式）会在下次启动时保留。
-
-## 项目结构
+## 目录结构
 
 ```
-labproxy/
-├── cmd/
-│   └── labproxy-tui/       # TUI 入口
-├── internal/
-│   ├── config/              # 配置解析（system-proxy、mode 等）
-│   ├── proxy/               # mihomo REST API 客户端
-│   └── tui/                 # Bubble Tea TUI 逻辑
-├── scripts/
-│   ├── proxyctl.sh          # 主控制脚本
-│   ├── common.sh            # 公共函数库
-│   └── build-tui.sh         # TUI 多架构构建脚本
-├── resources/
-│   ├── config.yaml          # 默认配置模板
-│   ├── mixin.yaml           # Mixin 配置模板
-│   ├── Country.mmdb         # GeoIP 数据库
-│   └── zip/                 # 预编译 TUI 压缩包
-├── tests/                   # 测试脚本
-├── install.sh               # 主安装脚本
-├── uninstall.sh             # 卸载脚本
-├── go.mod                   # Go 模块定义
+labproxy/                          ~/.labproxy/
+├── cmd/labproxy-tui/              ├── bin/
+├── internal/                      │   ├── mihomo              # 代理内核
+│   ├── config/                    │   ├── labproxy-tui        # TUI
+│   ├── proxy/                     │   ├── subconverter        # 订阅转换
+│   └── tui/                       │   └── yq                  # YAML 工具
+├── scripts/                       ├── config/
+│   ├── proxyctl.sh                │   ├── mixin.yaml
+│   ├── common.sh                  │   └── ports.conf
+│   └── build-tui.sh               ├── logs/
+├── resources/zip/                 │   └── labproxy.log
+├── install.sh                     ├── scripts/
+├── go.mod                         └── ui/
 └── README.md
 ```
 
-### 安装后目录结构
-
-```
-~/.labproxy/                # 用户安装目录
-├── bin/                    # 二进制文件
-│   ├── mihomo              # mihomo 代理内核
-│   ├── subconverter        # 订阅转换工具
-│   ├── yq                  # YAML 处理工具
-│   └── labproxy-tui        # 内置 TUI 二进制
-├── config/                 # 配置文件
-│   ├── mixin.yaml          # 自定义配置
-│   ├── ports.conf          # 端口状态
-│   ├── labproxy.pid        # 进程 ID 文件
-│   └── port.pref           # 端口偏好
-├── logs/                   # 日志文件
-│   └── labproxy.log        # 运行日志
-├── scripts/                # Shell 脚本
-│   ├── proxyctl.sh
-│   └── common.sh
-├── tui-src/                # TUI 源码（用于回退构建）
-├── ui/                     # Web 控制台文件
-├── config.yaml             # 原始订阅配置
-├── runtime.yaml            # 运行时合并配置
-└── Country.mmdb            # GeoIP 数据库
-```
+---
 
 ## 常见问题
 
-### Q: SSH 断开后代理服务会停止吗？
+**Q: SSH 断开后代理会停止吗？**  
+A: 不会。使用 `nohup` 后台运行，与 SSH 会话无关。
 
-A: 不会。服务使用 `nohup` 在后台运行，SSH 断开后仍然保持运行。
+**Q: 如何固定代理端口？**  
+A: `labproxy port set 7890`，冲突时自动提示重新选择。
 
-### Q: 如何在多个终端会话中使用代理？
+**Q: Web 控制台打不开？**  
+A: 检查防火墙是否放行管理端口（默认 9090，冲突时自动调整）。
 
-A: 代理服务是全局的，在任何终端中执行 `labproxy on` 后，所有终端都可以使用代理。
+**Q: 局域网内其他设备如何使用？**  
+A: `labproxy lan on` 开启后，其他设备设置代理为 `http://<本机IP>:<端口>`。
 
-### Q: 可以同时运行多个实例吗？
+---
 
-A: 不建议。每个用户建议只运行一个实例，避免端口冲突和配置混乱。
+## 相关项目
 
-### Q: 如何更换订阅地址？
+- [mihomo](https://github.com/MetaCubeX/mihomo) — 代理内核
+- [subconverter](https://github.com/tindy2013/subconverter) — 订阅转换
+- [zashboard](https://github.com/Zephyruso/zashboard) — Web UI
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) — TUI 框架
 
-A: 使用 `labproxy subscribe new-url` 命令更换，系统会自动更新配置。
+基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 二次开发。
 
-### Q: Web 控制台无法访问怎么办？
+## License
 
-A: 检查防火墙设置，确保控制台端口（默认 9090，端口冲突时会自动调整）可以访问。如果是远程访问，需要配置端口转发。
+[MIT License](LICENSE)
 
-### Q: 如何让局域网内其他设备使用代理？
+---
 
-A: 使用 `labproxy lan on` 开启局域网访问，然后在其他设备上配置代理服务器为本机 IP 和代理端口。可以通过 `labproxy status` 查看当前代理端口。
-
-### Q: 代理模式在重启后会恢复默认吗？
-
-A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动保存到 mixin 配置中，重启后会保留您的设置。
-
-## 致谢
-
-本项目基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 进行二次开发，感谢原作者的优秀工作。
-
-### 相关项目
-
-- [mihomo](https://github.com/MetaCubeX/mihomo) - 高性能的代理内核
-- [subconverter](https://github.com/tindy2013/subconverter) - 订阅转换工具
-- [zashboard](https://github.com/Zephyruso/zashboard) - Web 控制台界面
-- [yq](https://github.com/mikefarah/yq) - YAML 处理工具
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - 内置 TUI 框架
-
-### 参考资料
-
-- [Clash 知识库](https://clash.wiki/)
-- [Clash 配置文档](https://clash.wiki/configuration/configuration-reference.html)
-- [mihomo 文档](https://wiki.metacubex.one/)
-
-## 许可证
-
-本项目采用 [MIT License](LICENSE) 开源许可证。
-
-## 免责声明
-
-1. 编写本项目主要目的为学习和研究 Shell 编程，不得将本项目中任何内容用于违反国家/地区/组织等的法律法规或相关规定的其他用途。
-2. 本项目保留随时对免责声明进行补充或更改的权利，直接或间接使用本项目内容的个人或组织，视为接受本项目的特别声明。
-3. 使用本项目所产生的任何后果由使用者自行承担。
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Azhi-ss/labproxy&type=Date)](https://www.star-history.com/#Azhi-ss/labproxy&Date)
+<p align="center">
+  <a href="https://www.star-history.com/#Azhi-ss/labproxy&Date">
+    <img src="https://api.star-history.com/svg?repos=Azhi-ss/labproxy&type=Date" alt="Star History"/>
+  </a>
+</p>
