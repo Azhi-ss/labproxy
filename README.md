@@ -184,7 +184,5 @@ A: `labproxy lan on` 开启后，其他设备设置代理为 `http://<本机IP>:
 ---
 
 <p align="center">
-  <a href="https://www.star-history.com/#Azhi-ss/labproxy&Date">
-    <img src="https://api.star-history.com/svg?repos=Azhi-ss/labproxy&type=Date" alt="Star History"/>
-  </a>
+  如果这个工具对你有帮助，请给我们一颗 ⭐ <a href="https://github.com/Azhi-ss/labproxy">Star</a>
 </p>
