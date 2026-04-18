@@ -553,6 +553,12 @@ _finalize_runtime_start() {
     _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
     _set_system_proxy
     _okcat '已开启代理环境'
+    _show_proxy_info
+}
+
+_show_proxy_info() {
+    _okcat "代理端口: $MIXED_PORT  管理端口: $UI_PORT  DNS端口: $DNS_PORT"
+    _okcat "http://127.0.0.1:${MIXED_PORT}  socks5h://127.0.0.1:${MIXED_PORT}"
 }
 
 _restart_runtime() {
