@@ -3,20 +3,15 @@
 ![GitHub License](https://img.shields.io/github/license/Azhi-ss/labproxy)
 ![GitHub top language](https://img.shields.io/github/languages/top/Azhi-ss/labproxy)
 
-<table>
-  <tr>
-    <td align="center"><b>命令行界面</b></td>
-    <td align="center"><b>TUI 交互式界面</b></td>
-  </tr>
-  <tr>
-    <td><img src="resources/image.png" alt="命令行界面" width="400"/></td>
-    <td><img src="resources/tui.png" alt="TUI 交互式界面" width="400"/></td>
-  </tr>
-</table>
+<img src="resources/hero-banner.png" alt="LabProxy Banner" width="100%"/>
 
 ## 项目简介
 
 LabProxy 是专为实验室环境设计的科学上网解决方案，基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 项目进行二次开发。
+
+<img src="resources/concept.png" alt="概念示意" width="600" align="right"/>
+
+### 为什么选择 LabProxy？
 
 ### 为什么选择 LabProxy？
 
@@ -222,6 +217,17 @@ TUI 界面由本仓库内置维护，使用 Go + [Bubble Tea](https://github.com
 - 自适应终端宽度，支持窄终端
 
 > 提示：使用 `↑/↓` 或 `j/k` 导航，`Tab` 或 `←/→` 切换 `Groups / Options / Settings`，`Enter` 执行当前项，`s` 聚焦 Settings，`r` 刷新延迟，`m` 切换代理模式，`p` 切换 system proxy 偏好，`/` 搜索，`q` 退出。
+
+<img src="resources/tui-art.png" alt="TUI Art" width="100%" style="border-radius: 8px;"/>
+
+<details>
+<summary><b>真实界面截图</b></summary>
+
+| 命令行界面 | TUI 交互式界面 |
+|:---:|:---:|
+| <img src="resources/image.png" alt="命令行界面" width="400"/> | <img src="resources/tui.png" alt="TUI 交互式界面" width="400"/> |
+
+</details>
 
 #### 3.4 Web 控制台管理
 
