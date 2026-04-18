@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build pre-compiled clash-tui binaries for multiple architectures
+# Build pre-compiled labproxy-tui binaries for multiple architectures
 
 set -e
 
@@ -16,7 +16,7 @@ mkdir -p "$BUILD_DIR" "$ZIP_DIR"
 # Version information (can be passed via env var)
 VERSION="${VERSION:-dev}"
 
-echo "Building clash-tui ${VERSION}..."
+echo "Building labproxy-tui ${VERSION}..."
 
 # Build targets
 TARGETS=(
@@ -33,7 +33,7 @@ for target in "${TARGETS[@]}"; do
 
     echo "Building for ${GOOS}/${GOARCH}..."
 
-    BIN_NAME="clash-tui-${GOOS}-${GOARCH}"
+    BIN_NAME="labproxy-tui-${GOOS}-${GOARCH}"
     if [ "$GOOS" = "windows" ]; then
         BIN_NAME="${BIN_NAME}.exe"
     fi
@@ -45,9 +45,9 @@ for target in "${TARGETS[@]}"; do
         ./cmd/labproxy-tui
 
     # Package as tar.gz (or zip for Windows)
-    ARCHIVE_NAME="clash-tui-${GOOS}-${GOARCH}.tar.gz"
+    ARCHIVE_NAME="labproxy-tui-${GOOS}-${GOARCH}.tar.gz"
     if [ "$GOOS" = "windows" ]; then
-        ARCHIVE_NAME="clash-tui-${GOOS}-${GOARCH}.zip"
+        ARCHIVE_NAME="labproxy-tui-${GOOS}-${GOARCH}.zip"
         (cd "$BUILD_DIR" && zip "$ZIP_DIR/$ARCHIVE_NAME" "$BIN_NAME")
     else
         (cd "$BUILD_DIR" && tar -czf "$ZIP_DIR/$ARCHIVE_NAME" "$BIN_NAME")
@@ -58,6 +58,6 @@ done
 
 echo ""
 echo "Build complete! Binaries in $ZIP_DIR/"
-ls -lh "$ZIP_DIR/clash-tui-"*
+ls -lh "$ZIP_DIR/labproxy-tui-"*
 echo ""
-echo "Reminder: if TUI source or CLI flags changed, commit the refreshed resources/zip/clash-tui-*.tar.gz archives together with the code changes."
+echo "Reminder: if TUI source or CLI flags changed, commit the refreshed resources/zip/labproxy-tui-*.tar.gz archives together with the code changes."

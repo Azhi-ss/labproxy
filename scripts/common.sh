@@ -623,7 +623,7 @@ _download_raw_config() {
     return 1
 }
 
-_build_clash_tui() {
+_build_labproxy_tui() {
     local source_dir="${1:-$LABPROXY_TUI_SRC_DIR}"
     local dest="${2:-$LABPROXY_TUI_BIN}"
 
@@ -689,7 +689,7 @@ _install_tui_from_source() {
     [ -f "$SCRIPT_DIR"/go.sum ] && cp "$SCRIPT_DIR"/go.sum "$LABPROXY_TUI_SRC_DIR"/ 2>/dev/null || true
 
     if command -v go >/dev/null 2>&1; then
-        _build_clash_tui "$LABPROXY_TUI_SRC_DIR" "$LABPROXY_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'labproxy tui' 时重试"
+        _build_labproxy_tui "$LABPROXY_TUI_SRC_DIR" "$LABPROXY_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'labproxy tui' 时重试"
     else
         _failcat "未检测到 Go，首次执行 'labproxy tui' 前需要先安装 Go 以构建内置 TUI"
     fi

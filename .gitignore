@@ -50,6 +50,7 @@ local_config.yaml
 mihomo
 clash
 clash-tui
+labproxy-tui
 yq
 subconverter
 build/

@@ -169,8 +169,8 @@ allow-lan: false
 system-proxy.enable: false
 EOF
 }
-_build_clash_tui() {
-    echo build_clash_tui >> "$ACTION_LOG"
+_build_labproxy_tui() {
+    echo build_labproxy_tui >> "$ACTION_LOG"
     cat > "$LABPROXY_TUI_BIN" <<EOF
 #!/usr/bin/env bash
 echo "labproxy_tui:\$*" >> "$ACTION_LOG"

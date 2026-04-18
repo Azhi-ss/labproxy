@@ -485,14 +485,14 @@ function labproxytui() {
     local restart_command="source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 
     _okcat "正在连接 $endpoint ..."
-    if _tui_supports_restart_command "$clash_tui_bin"; then
-        "$clash_tui_bin" \
+    if _tui_supports_restart_command "$labproxy_tui_bin"; then
+        "$labproxy_tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
             --mixin-config "$LABPROXY_CONFIG_MIXIN" \
             --restart-command "$restart_command"
     else
-        "$clash_tui_bin" \
+        "$labproxy_tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
             --mixin-config "$LABPROXY_CONFIG_MIXIN"
