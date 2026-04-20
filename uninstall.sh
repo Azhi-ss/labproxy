@@ -28,6 +28,6 @@ if _is_labproxy_tmpdir_path "${TMPDIR:-}" || _is_labproxy_tmpdir_path "${TMP:-}"
     unset TMPDIR TMP TEMP
 fi
 
-_okcat '✨' '已卸载 labproxy 用户空间代理，相关配置已清除'
-_okcat '📝' '注意：请重新加载 shell 配置或重新登录以清除环境变量'
+_okcat '✨' 'LabProxy 用户空间代理已卸载，相关配置已清除'
+_okcat '💡' '注意：请重新加载 shell 配置或重新登录以清除环境变量'
 _quit

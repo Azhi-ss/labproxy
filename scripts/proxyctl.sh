@@ -4,7 +4,7 @@
 _set_system_proxy() {
     # Ensure config files exist before reading
     [ ! -f "$LABPROXY_CONFIG_RUNTIME" ] && {
-        _failcat "运行时配置文件不存在: $LABPROXY_CONFIG_RUNTIME"
+        _failcat "运行时配置文件不存在：${LABPROXY_CONFIG_RUNTIME}"
         return 1
     }
     
@@ -96,7 +96,7 @@ _verify_actual_ports() {
     if [ -n "$actual_proxy_port" ]; then
         MIXED_PORT=$actual_proxy_port
         [ "$actual_proxy_port" != "$config_proxy_port" ] && {
-            _failcat "🔄" "labproxy自动调整代理端口: $config_proxy_port → $actual_proxy_port"
+            _failcat "🔄" "LabProxy 自动调整代理端口：${config_proxy_port} → ${actual_proxy_port}"
             port_changed=true
         }
     else
@@ -106,7 +106,7 @@ _verify_actual_ports() {
     if [ -n "$actual_ui_port" ]; then
         UI_PORT=$actual_ui_port
         [ "$actual_ui_port" != "$config_ui_port" ] && {
-            _failcat "🔄" "labproxy自动调整UI端口: $config_ui_port → $actual_ui_port"
+            _failcat "🔄" "LabProxy 自动调整 UI 端口：${config_ui_port} → ${actual_ui_port}"
             port_changed=true
         }
     else
@@ -116,7 +116,7 @@ _verify_actual_ports() {
     if [ -n "$actual_dns_port" ]; then
         DNS_PORT=$actual_dns_port
         [ "$actual_dns_port" != "$config_dns_port" ] && {
-            _failcat "🔄" "labproxy自动调整DNS端口: $config_dns_port → $actual_dns_port"
+            _failcat "🔄" "LabProxy 自动调整 DNS 端口：${config_dns_port} → ${actual_dns_port}"
             port_changed=true
         }
     else
@@ -125,7 +125,7 @@ _verify_actual_ports() {
     
     # 只有当端口有变化时才显示最终端口分配并重新设置系统代理
     if [ "$port_changed" = true ]; then
-        _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+        _okcat "最终端口分配 — 代理:${MIXED_PORT} UI:${UI_PORT} DNS:${DNS_PORT}"
         # 保存实际监听端口到状态文件
         _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
         # 端口变化时重新设置系统代理环境变量
@@ -193,7 +193,7 @@ _restore_external_proxy() {
     done < "$_EXTERNAL_PROXY_STATE"
 
     rm -f "$_EXTERNAL_PROXY_STATE"
-    [ -n "$http_proxy" ] && _okcat '🔄' "已恢复外部代理: $http_proxy"
+    [ -n "$http_proxy" ] && _okcat '🔄' "已恢复外部代理：${http_proxy}"
     return 0
 }
 
@@ -218,7 +218,7 @@ watch_proxy() {
     elif _is_wsl_auto_proxy; then
         # WSL mirrored autoProxy 已注入 Windows 代理
         # 保存 Windows 代理，然后覆盖为 labproxy 代理
-        _okcat '🔄' "检测到 Windows autoProxy ($http_proxy)，已切换为 labproxy 代理 (端口 ${MIXED_PORT})"
+        _okcat '🔄' "检测到 Windows autoProxy（${http_proxy}），已切换为 LabProxy 代理（端口 ${MIXED_PORT}）"
         _save_external_proxy
         local auth=$("$BIN_YQ" '.authentication[0] // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
         [ -n "$auth" ] && auth=$auth@
@@ -236,7 +236,7 @@ function labproxyoff() {
     # Stop mihomo process
     stop_labproxy
     _unset_system_proxy
-    _okcat '已关闭代理环境'
+    _okcat '代理环境已关闭'
 }
 
 function labproxyrestart() {
@@ -252,15 +252,15 @@ function labproxyproxy() {
             _get_ui_port
             _get_dns_port
             _set_system_proxy
-            _okcat '已开启系统代理'
+            _okcat '系统代理已开启'
         else
-            _failcat '无法开启系统代理：labproxy 进程未运行'
+            _failcat '无法开启系统代理：LabProxy 进程未运行'
             return 1
         fi
         ;;
     off)
         _unset_system_proxy
-        _okcat '已关闭系统代理'
+        _okcat '系统代理已关闭'
         ;;
     status)
         local system_proxy_status=$("$BIN_YQ" '.system-proxy.enable' "$LABPROXY_CONFIG_MIXIN" 2>/dev/null)
@@ -274,7 +274,7 @@ function labproxyproxy() {
 http_proxy： $http_proxy
 socks_proxy：$all_proxy"
         else
-            _failcat "系统代理：配置为开启，但 labproxy 进程未运行"
+            _failcat "系统代理：配置为开启，但 LabProxy 进程未运行"
             return 1
         fi
         ;;
@@ -303,8 +303,8 @@ function labproxyport() {
         else
             mode_msg="自动"
         fi
-        _okcat "端口模式：$mode_msg"
-        _okcat "当前代理端口：$MIXED_PORT"
+        _okcat "端口模式：${mode_msg}"
+        _okcat "当前代理端口：${MIXED_PORT}"
         ;;
     auto)
         _save_port_preferences auto ""
@@ -336,7 +336,7 @@ function labproxyport() {
             fi
 
             if _is_already_in_use "$manual_port" "$BIN_KERNEL_NAME"; then
-                _failcat '🎯' "端口 $manual_port 已被占用"
+                _failcat "端口 ${manual_port} 已被占用"
                 printf "选择操作 [r]重新输入/[a]自动分配: "
                 read -r choice
                 case "$choice" in
@@ -363,7 +363,7 @@ function labproxyport() {
             _okcat "已切换为自动分配代理端口"
         else
             _save_port_preferences manual "$manual_port"
-            _okcat "已固定代理端口：$manual_port"
+            _okcat "已固定代理端口：${manual_port}"
         fi
 
         if is_labproxy_running; then
@@ -389,28 +389,28 @@ function labproxystatus() {
     # Show subscription URL
     local subscription_url=$(cat "$LABPROXY_CONFIG_URL" 2>/dev/null)
     if [ -n "$subscription_url" ]; then
-        _okcat "订阅地址: $subscription_url"
+        _okcat "订阅地址：${subscription_url}"
     else
-        _failcat "订阅地址: 未设置"
+        _failcat "订阅地址：未设置"
     fi
     
     if is_labproxy_running; then
         local pid=$(cat "$pid_file" 2>/dev/null)
         local uptime=$(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' ')
-        _okcat "labproxy 进程状态: 运行中"
-        _okcat "进程 PID: $pid"
-        _okcat "运行时间: ${uptime:-未知}"
-        _okcat "配置文件: $LABPROXY_CONFIG_RUNTIME"
-        _okcat "日志文件: $log_file"
+        _okcat "LabProxy 进程状态：运行中"
+        _okcat "进程 PID：${pid}"
+        _okcat "运行时间：${uptime:-未知}"
+        _okcat "配置文件：${LABPROXY_CONFIG_RUNTIME}"
+        _okcat "日志文件：${log_file}"
         
         # Show proxy port status
         if [ -f "$LABPROXY_CONFIG_RUNTIME" ]; then
             _get_proxy_port
             _get_ui_port
             _get_dns_port
-            _okcat "代理端口: $MIXED_PORT"
-            _okcat "管理端口: $UI_PORT"
-            _okcat "DNS端口: $DNS_PORT"
+            _okcat "代理端口：${MIXED_PORT}"
+            _okcat "管理端口：${UI_PORT}"
+            _okcat "DNS 端口：${DNS_PORT}"
         else
             _failcat "配置文件不存在，无法获取端口信息"
         fi
@@ -418,7 +418,7 @@ function labproxystatus() {
         # Show system proxy status
         labproxyproxy status
     else
-        _failcat "labproxy 进程状态: 未运行"
+        _failcat "LabProxy 进程状态：未运行"
         [ -f "$pid_file" ] && {
             _failcat "发现残留 PID 文件，已清理"
             rm -f "$pid_file"
@@ -440,12 +440,12 @@ function labproxyui() {
     local local_address="http://${local_ip}:${UI_PORT}/ui"
     printf "\n"
     printf "╔═══════════════════════════════════════════════╗\n"
-    printf "║                %s                  ║\n" "$(_okcat 'Web 控制台')"
+    printf "║                %s                  ║\n" "$(_okcat '🐙 Web 控制台')"
     printf "║═══════════════════════════════════════════════║\n"
     printf "║                                               ║\n"
     printf "║     🔓 注意放行端口：%-5s                    ║\n" "$UI_PORT"
-    printf "║     🏠 内网：%-31s  ║\n" "$local_address"
-    printf "║     🌏 公网：%-31s  ║\n" "$public_address"
+    printf "║     🖥️  内网：%-31s  ║\n" "$local_address"
+    printf "║     🌐 公网：%-31s  ║\n" "$public_address"
     printf "║     ☁️  公共：%-31s  ║\n" "$URL_LABPROXY_UI"
     printf "║                                               ║\n"
     printf "╚═══════════════════════════════════════════════╝\n"
@@ -465,7 +465,7 @@ function labproxytui() {
 
     # 确保 mihomo 运行
     if ! is_labproxy_running; then
-        _okcat "正在启动 mihomo..."
+        _okcat "正在启动 Mihomo..."
         labproxyon || return 1
     fi
 
@@ -525,7 +525,7 @@ _build_runtime_config() {
     _valid_config "$LABPROXY_CONFIG_RUNTIME" || {
         # Restore backup on validation failure
         cat "$backup" > "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null
-        _error_quit "验证失败：请检查 Mixin 配置"
+        _error_quit "校验失败，请检查 Mixin 配置"
         return 1
     }
 
@@ -552,12 +552,12 @@ _finalize_runtime_start() {
     # 保存端口状态并设置系统代理
     _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
     _set_system_proxy
-    _okcat '已开启代理环境'
+    _okcat '代理环境已开启'
     _show_proxy_info
 }
 
 _show_proxy_info() {
-    _okcat "代理端口: $MIXED_PORT  管理端口: $UI_PORT  DNS端口: $DNS_PORT"
+    _okcat "代理端口：${MIXED_PORT}  管理端口：${UI_PORT}  DNS 端口：${DNS_PORT}"
     _okcat "http://127.0.0.1:${MIXED_PORT}  socks5h://127.0.0.1:${MIXED_PORT}"
 }
 
@@ -614,31 +614,31 @@ _enable_auto_subscription_update() {
         # Add user-level crontab entry (every 2 days at midnight)
         (crontab -l 2>/dev/null; echo "0 0 */2 * * $_SHELL -i -c 'labproxyctl update' # labproxyctl_auto_update") | crontab -
     }
-    _okcat "已设置用户级定时更新订阅 (每2天执行一次)"
+    _okcat "已设置用户级定时更新订阅（每 2 天执行一次）"
 }
 
 _download_and_apply_subscription() {
     local url=$1
 
-    _okcat '👌' "正在下载：原配置已备份..."
+    _okcat '⏳' "正在下载，原配置已备份..."
 
     # Ensure directories exist and backup using user permissions
     mkdir -p "$(dirname "$LABPROXY_CONFIG_RAW_BAK")" "$(dirname "$LABPROXY_UPDATE_LOG")"
     cp "$LABPROXY_CONFIG_RAW" "$LABPROXY_CONFIG_RAW_BAK" 2>/dev/null
 
     _rollback() {
-        _failcat '🍂' "$1"
+        _failcat '❌' "$1"
         # Restore backup using user permissions
         cp "$LABPROXY_CONFIG_RAW_BAK" "$LABPROXY_CONFIG_RAW" 2>/dev/null
         _append_update_log "订阅更新失败" "$url"
         return 1
     }
 
-    _download_config "$LABPROXY_CONFIG_RAW" "$url" || { _rollback "下载失败：已回滚配置" || true; return 1; }
-    _valid_config "$LABPROXY_CONFIG_RAW" || { _rollback "转换失败：已回滚配置，转换日志：$BIN_SUBCONVERTER_LOG" || true; return 1; }
+    _download_config "$LABPROXY_CONFIG_RAW" "$url" || {         _rollback "下载失败，已回滚配置" || true; return 1; }
+    _valid_config "$LABPROXY_CONFIG_RAW" || { _rollback "转换失败，已回滚配置，转换日志：${BIN_SUBCONVERTER_LOG}" || true; return 1; }
 
     _merge_config_restart || return 1
-    _okcat '🍃' '订阅更新成功'
+    _okcat '✅' '订阅更新成功'
 
     # Save URL and log success using user permissions
     _save_subscription_url "$url"
@@ -649,7 +649,7 @@ function labproxysecret() {
     case "$#" in
     0)
         if [ -f "$LABPROXY_CONFIG_RUNTIME" ]; then
-            _okcat "当前密钥：$("$BIN_YQ" '.secret // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)"
+            _okcat '🔑' "当前密钥：$("$BIN_YQ" '.secret // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)"
         else
             _failcat "运行时配置文件不存在"
         fi
@@ -657,7 +657,7 @@ function labproxysecret() {
     1)
         _update_mixin_config ".secret = \"$1\"" "密钥更新失败，请重新输入" || return 1
         _apply_runtime_change
-        _okcat "密钥更新成功，已重启生效"
+        _okcat '🔑' "密钥更新成功，已重启生效"
         ;;
     *)
         _failcat "密钥不要包含空格或使用引号包围"
@@ -697,13 +697,13 @@ _tunon() {
             tail -20 "$log_file" 2>/dev/null | grep -i "tun" >/dev/null 2>&1 && {
                 _okcat "Tun 模式已开启"
             } || {
-                _okcat "Tun 模式已开启 (请检查日志确认状态: $log_file)"
+                _okcat "Tun 模式已开启（请检查日志确认状态：${log_file}）"
             }
         else
             _okcat "Tun 模式已开启"
         fi
     else
-        _failcat "Tun 模式配置已更新，但 labproxy 进程未运行"
+        _failcat "Tun 模式配置已更新，但 LabProxy 进程未运行"
     fi
 }
 
@@ -776,7 +776,7 @@ function labproxysubscribe() {
         # Show current subscription URL
         local url=$(cat "$LABPROXY_CONFIG_URL" 2>/dev/null)
         if [ -n "$url" ]; then
-            _okcat "当前订阅地址: $url"
+            _okcat "当前订阅地址：${url}"
         else
             _failcat "未设置订阅地址"
             return 1
@@ -792,7 +792,7 @@ function labproxysubscribe() {
         
         # Save URL
         _save_subscription_url "$new_url"
-        _okcat "订阅地址已设置: $new_url"
+        _okcat "订阅地址已设置：${new_url}"
         
         # Ask if user wants to update immediately
         printf "是否立即更新订阅配置? [y/N]: "
@@ -808,7 +808,7 @@ function labproxysubscribe() {
         ;;
     *)
         cat <<EOF
-用法: clash subscribe [URL]
+用法: labproxy subscribe [URL]
     无参数      显示当前订阅地址
     URL         设置新的订阅地址
 EOF

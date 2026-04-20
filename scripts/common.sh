@@ -281,7 +281,7 @@ function _get_kernel() {
     }
 
     BIN_KERNEL_NAME=$(basename "$BIN_KERNEL")
-    _okcat "安装内核：$BIN_KERNEL_NAME"
+    _okcat "安装内核：${BIN_KERNEL_NAME}"
 }
 
 # 检测并选择预编译的 labproxy-tui 压缩包
@@ -429,7 +429,7 @@ _get_color_msg() {
 
 function _okcat() {
     local color=#c8d6e5
-    local emoji=😼
+    local emoji=🐙
     [ $# -gt 1 ] && emoji=$1 && shift
     local msg="${emoji} $1"
     _get_color_msg "$color" "$msg" && return 0
@@ -437,7 +437,7 @@ function _okcat() {
 
 function _failcat() {
     local color=#fd79a8
-    local emoji=😾
+    local emoji=🦑
     [ $# -gt 1 ] && emoji=$1 && shift
     local msg="${emoji} $1"
     _get_color_msg "$color" "$msg" >&2 && return 1
@@ -461,7 +461,7 @@ function _quit() {
 function _error_quit() {
     [ $# -gt 0 ] && {
         local color=#f92f60
-        local emoji=📢
+        local emoji=🚨
         [ $# -gt 1 ] && emoji=$1 && shift
         local msg="${emoji} $1"
         _get_color_msg "$color" "$msg"
@@ -492,7 +492,7 @@ _is_already_in_use() {
 function _valid_env() {
     # 用户空间运行，不需要root权限检查
     if [ -z "$ZSH_VERSION" ] && [ -z "$BASH_VERSION" ]; then
-        _failcat "仅支持：bash、zsh (例如: bash install.sh)"
+        _failcat "仅支持 bash、zsh（例如：bash install.sh）"
         return 1
     fi
     return 0
@@ -531,11 +531,11 @@ _download_clash() {
         sha256sum='c45b39bb241e270ae5f4498e2af75cecc0f03c9db3c0db5e55c8c4919f01afdd'
         ;;
     *)
-        _error_quit "未知的架构版本：$arch，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
+        _error_quit "未知的架构：${arch}，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
         ;;
     esac
 
-    _okcat '⏳' "正在下载：clash：${arch} 架构..."
+    _okcat '⏳' "正在下载 Clash 内核（${arch} 架构）..."
     local clash_zip="${ZIP_BASE_DIR}/$(basename $url)"
     curl \
         --progress-bar \
@@ -547,7 +547,7 @@ _download_clash() {
         --output "$clash_zip" \
         "$url"
     echo $sha256sum "$clash_zip" | sha256sum -c ||
-        _error_quit "下载失败：请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
+        _error_quit "下载失败，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
 }
 
 _download_raw_config() {
@@ -632,12 +632,12 @@ _build_labproxy_tui() {
     local dest="${2:-$LABPROXY_TUI_BIN}"
 
     command -v go >/dev/null 2>&1 || {
-        _failcat "未检测到 Go，无法构建内置 TUI"
+        _failcat "未检测到 Go 环境，无法构建内置 TUI"
         return 1
     }
 
     [ -f "$source_dir/go.mod" ] || {
-        _failcat "未找到内置 TUI 源码：$source_dir"
+        _failcat "未找到内置 TUI 源码：${source_dir}"
         return 1
     }
 
@@ -653,7 +653,7 @@ _build_labproxy_tui() {
     }
 
     chmod +x "$dest"
-    _okcat "内置 TUI 构建完成"
+    _okcat "内置 TUI 构建完成 ✨"
 }
 
 _tui_supports_restart_command() {
@@ -695,7 +695,7 @@ _install_tui_from_source() {
     if command -v go >/dev/null 2>&1; then
         _build_labproxy_tui "$LABPROXY_TUI_SRC_DIR" "$LABPROXY_TUI_BIN" || _failcat "安装阶段未能构建内置 TUI，可在首次执行 'labproxy tui' 时重试"
     else
-        _failcat "未检测到 Go，首次执行 'labproxy tui' 前需要先安装 Go 以构建内置 TUI"
+        _failcat "未检测到 Go 环境，首次执行 'labproxy tui' 前需要先安装 Go 以构建内置 TUI"
     fi
 }
 
@@ -725,10 +725,10 @@ function _download_config() {
     local url=$2
     [ "${url:0:4}" = 'file' ] && return 0
     _download_raw_config "$dest" "$url" || return 1
-    _okcat '🍃' '下载成功：内核验证配置...'
+    _okcat '✅' '下载成功，正在校验配置...'
     _valid_config "$dest" || {
-        _failcat '🍂' "验证失败：尝试订阅转换..."
-        _download_convert_config "$dest" "$url" || _failcat '🍂' "转换失败：请检查日志：$BIN_SUBCONVERTER_LOG"
+        _failcat '⚠️' "校验失败，尝试订阅转换..."
+        _download_convert_config "$dest" "$url" || _failcat '❌' "转换失败，请检查日志：${BIN_SUBCONVERTER_LOG}"
     }
 }
 
@@ -744,7 +744,7 @@ _start_convert() {
 
     _is_already_in_use $BIN_SUBCONVERTER_PORT 'subconverter' && {
         local newPort=$(_get_random_port)
-        _failcat '🎯' "端口占用：$BIN_SUBCONVERTER_PORT 🎲 随机分配：$newPort"
+        _failcat "端口 ${BIN_SUBCONVERTER_PORT} 已占用，随机分配：${newPort}"
         "$BIN_YQ" -i ".server.port = $newPort" "$BIN_SUBCONVERTER_CONFIG"
         BIN_SUBCONVERTER_PORT=$newPort
     }
@@ -754,7 +754,7 @@ _start_convert() {
     while ! _is_bind "$BIN_SUBCONVERTER_PORT" >&/dev/null; do
         sleep 1s
         local now=$(date +%s)
-        [ $((now - start)) -gt 10 ] && _error_quit "订阅转换服务未启动，请检查日志：$BIN_SUBCONVERTER_LOG"
+        [ $((now - start)) -gt 10 ] && _error_quit "订阅转换服务启动超时，请检查日志：${BIN_SUBCONVERTER_LOG}"
     done
 }
 _stop_convert() {
@@ -790,13 +790,13 @@ start_labproxy() {
 
     # Check if labproxy is already running
     if is_labproxy_running; then
-        _okcat "labproxy 进程已在运行"
+        _okcat "LabProxy 进程已在运行"
         return 0
     fi
 
     # Validate configuration before starting
     _valid_config "$LABPROXY_CONFIG_RUNTIME" || {
-        _failcat "配置文件验证失败，无法启动 labproxy"
+        _failcat "配置校验失败，无法启动 LabProxy"
         return 1
     }
 
@@ -810,11 +810,11 @@ start_labproxy() {
     # Wait a moment and verify the process started successfully
     sleep 1
     if is_labproxy_running; then
-        _okcat "labproxy 进程启动成功 (PID: $pid)"
+        _okcat "LabProxy 进程启动成功（PID: ${pid}）"
         return 0
     else
         rm -f "$pid_file"
-        _failcat "labproxy 进程启动失败，请检查日志: $log_file"
+        _failcat "LabProxy 进程启动失败，请检查日志：${log_file}"
         return 1
     fi
 }
@@ -823,7 +823,7 @@ stop_labproxy() {
     local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
 
     if [ ! -f "$pid_file" ]; then
-        _okcat "labproxy 进程未运行"
+        _okcat "LabProxy 进程未运行"
         return 0
     fi
 
@@ -835,7 +835,7 @@ stop_labproxy() {
     fi
 
     if ! _is_labproxy_pid "$pid"; then
-        _failcat "PID 文件指向非 labproxy 进程，已清理 PID 文件以避免误杀 (PID: $pid)"
+        _failcat "PID 文件指向非 LabProxy 进程，已清理以避免误杀（PID: ${pid}）"
         rm -f "$pid_file"
         return 1
     fi
@@ -852,12 +852,12 @@ stop_labproxy() {
         # Force kill if still running
         if kill -0 "$pid" 2>/dev/null; then
             kill -9 "$pid" 2>/dev/null
-            _okcat "强制终止 labproxy 进程 (PID: $pid)"
+            _okcat "LabProxy 进程已强制终止（PID: ${pid}）"
         else
-            _okcat "labproxy 进程已优雅停止 (PID: $pid)"
+            _okcat "LabProxy 进程已优雅停止（PID: ${pid}）"
         fi
     else
-        _okcat "labproxy 进程已停止"
+        _okcat "LabProxy 进程已停止"
     fi
 
     rm -f "$pid_file"
@@ -906,7 +906,7 @@ _resolve_port_conflicts() {
 
             if [ "$interactive" = true ]; then
                 while true; do
-                    [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
+                    [ "$show_message" = true ] && _failcat "代理端口 ${MIXED_PORT} 已占用"
                     printf "端口 %s 已被占用，选择操作 [r]重新输入/[a]自动分配: " "$MIXED_PORT"
                     read -r choice
                     case "$choice" in
@@ -941,8 +941,8 @@ _resolve_port_conflicts() {
                     esac
                 done
             else
-                [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
-                _okcat '⚙️' "检测到非交互环境，已切换为自动分配端口"
+                [ "$show_message" = true ] && _failcat "代理端口 ${MIXED_PORT} 已占用"
+                _okcat "检测到非交互环境，已切换为自动分配端口"
                 _save_port_preferences auto ""
                 PORT_PREF_VALUE=""
                 PORT_PREF_MODE=auto
@@ -950,12 +950,12 @@ _resolve_port_conflicts() {
             fi
         else
             require_auto=true
-            [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
+            [ "$show_message" = true ] && _failcat "代理端口 ${MIXED_PORT} 已占用"
         fi
 
         if [ "$require_auto" = true ]; then
             local newPort=$(_get_random_port)
-            [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
+            [ "$show_message" = true ] && _failcat "代理端口 ${MIXED_PORT} 已占用，已分配 ${newPort}"
             "$BIN_YQ" -i ".mixed-port = $newPort" "$config_file"
             MIXED_PORT=$newPort
             port_changed=true
@@ -977,7 +977,7 @@ _resolve_port_conflicts() {
 
     if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
-        [ "$show_message" = true ] && _failcat '🎯' "UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
+        [ "$show_message" = true ] && _failcat "UI 端口 ${UI_PORT} 已占用，已分配 ${newPort}"
         "$BIN_YQ" -i ".external-controller = \"${bind_addr}:$newPort\"" "$config_file"
         UI_PORT=$newPort
         port_changed=true
@@ -998,14 +998,14 @@ _resolve_port_conflicts() {
 
     if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
-        [ "$show_message" = true ] && _failcat '🎯' "DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
+        [ "$show_message" = true ] && _failcat "DNS 端口 ${DNS_PORT} 已占用，已分配 ${newPort}"
         "$BIN_YQ" -i ".dns.listen = \"${dns_bind_addr}:$newPort\"" "$config_file"
         DNS_PORT=$newPort
         port_changed=true
     fi
 
     if [ "$port_changed" = true ] && [ "$show_message" = true ]; then
-        _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+        _okcat "端口分配完成 — 代理:${MIXED_PORT} UI:${UI_PORT} DNS:${DNS_PORT}"
     fi
 
     return 0
