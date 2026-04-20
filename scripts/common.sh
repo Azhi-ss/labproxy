@@ -182,6 +182,10 @@ _rc_managed_line() {
 }
 
 _rc_managed_line_fish() {
+    printf 'set -gx LABPROXY_HOME %s/.labproxy' "$HOME"
+}
+
+_rc_managed_line_fish_path() {
     printf 'set -gx PATH %s/.labproxy/bin $PATH' "$HOME"
 }
 
@@ -229,11 +233,12 @@ _write_rc_block() {
 _write_rc_block_fish() {
     local rc_file=$1
     local tmp_file="${rc_file}.tmp.$$"
-    local begin_marker end_marker managed_line
+    local begin_marker end_marker managed_line_home managed_line_path
 
     begin_marker=$(_rc_block_begin)
     end_marker=$(_rc_block_end)
-    managed_line=$(_rc_managed_line_fish)
+    managed_line_home=$(_rc_managed_line_fish)
+    managed_line_path=$(_rc_managed_line_fish_path)
 
     mkdir -p "$(dirname "$rc_file")"
     touch "$rc_file"
@@ -241,7 +246,8 @@ _write_rc_block_fish() {
     awk \
         -v begin_marker="$begin_marker" \
         -v end_marker="$end_marker" \
-        -v managed_line="$managed_line" '
+        -v managed_line_home="$managed_line_home" \
+        -v managed_line_path="$managed_line_path" '
         $0 == begin_marker {
             in_block = 1
             next
@@ -251,12 +257,13 @@ _write_rc_block_fish() {
             next
         }
         in_block { next }
-        $0 == managed_line { next }
+        $0 == managed_line_home { next }
+        $0 == managed_line_path { next }
         { print }
         ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
 
     [ -s "$rc_file" ] && printf '\n' >> "$rc_file"
-    printf '%s\n%s\n%s\n' "$begin_marker" "$managed_line" "$end_marker" >> "$rc_file"
+    printf '%s\n%s\n%s\n%s\n' "$begin_marker" "$managed_line_home" "$managed_line_path" "$end_marker" >> "$rc_file"
 }
 
 _remove_rc_block() {
@@ -292,19 +299,21 @@ _remove_rc_block() {
 _remove_rc_block_fish() {
     local rc_file=$1
     local tmp_file="${rc_file}.tmp.$$"
-    local begin_marker end_marker managed_line
+    local begin_marker end_marker managed_line_home managed_line_path
 
     [ -n "$rc_file" ] || return 0
     [ -f "$rc_file" ] || return 0
 
     begin_marker=$(_rc_block_begin)
     end_marker=$(_rc_block_end)
-    managed_line=$(_rc_managed_line_fish)
+    managed_line_home=$(_rc_managed_line_fish)
+    managed_line_path=$(_rc_managed_line_fish_path)
 
     awk \
         -v begin_marker="$begin_marker" \
         -v end_marker="$end_marker" \
-        -v managed_line="$managed_line" '
+        -v managed_line_home="$managed_line_home" \
+        -v managed_line_path="$managed_line_path" '
         $0 == begin_marker {
             in_block = 1
             next
@@ -314,7 +323,8 @@ _remove_rc_block_fish() {
             next
         }
         in_block { next }
-        $0 == managed_line { next }
+        $0 == managed_line_home { next }
+        $0 == managed_line_path { next }
         { print }
         ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
 }

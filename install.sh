@@ -100,6 +100,16 @@ if ! unzip -q -o "$ZIP_UI" -d "$LABPROXY_HOME_DIR"; then
 fi
 mv "${LABPROXY_HOME_DIR}/dist" "${LABPROXY_HOME_DIR}/ui"
 
+# 创建 labproxy wrapper 脚本（供 fish 等 shell 使用）
+cat > "${LABPROXY_HOME_DIR}/bin/labproxy" <<'WRAPPER'
+#!/usr/bin/env bash
+# labproxy wrapper - enables labproxy commands in non-bash/zsh shells (e.g. fish)
+source "$(dirname "$0")"/../scripts/common.sh
+source "$(dirname "$0")"/../scripts/proxyctl.sh
+labproxyctl "$@"
+WRAPPER
+chmod +x "${LABPROXY_HOME_DIR}/bin/labproxy"
+
 # 设置 shell 配置
 _set_rc
 

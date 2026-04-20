@@ -143,7 +143,8 @@ test_set_rc_adds_fish_managed_block() {
 
     assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "# >>> labproxy >>>")" "fish begin marker count"
     assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "# <<< labproxy <<<")" "fish end marker count"
-    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "set -gx PATH $HOME/.labproxy/bin \$PATH")" "fish managed line count"
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "set -gx LABPROXY_HOME $HOME/.labproxy")" "fish LABPROXY_HOME line count"
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "set -gx PATH $HOME/.labproxy/bin \$PATH")" "fish PATH line count"
     assert_file_contains "$SHELL_RC_FISH" "set -gx KEEP_FISH 1"
 }
 
@@ -152,6 +153,7 @@ test_set_rc_unset_removes_fish_managed_block() {
     _set_rc unset
 
     assert_file_not_contains "$SHELL_RC_FISH" "# >>> labproxy >>>"
+    assert_file_not_contains "$SHELL_RC_FISH" "set -gx LABPROXY_HOME"
     assert_file_not_contains "$SHELL_RC_FISH" "set -gx PATH $HOME/.labproxy/bin \$PATH"
     assert_file_contains "$SHELL_RC_FISH" "set -gx KEEP_FISH 1"
 }
