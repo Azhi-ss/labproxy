@@ -449,7 +449,11 @@ _has_tty() {
 
 function _quit() {
     if [ -n "$_SHELL" ] && _has_tty; then
-        exec "$_SHELL" -i
+        if [ -n "$TERM_PROGRAM_VERSION" ] || [ -n "$VSCODE_IPC_HOOK_CLI" ] || [ -n "$ELECTRON_RUN_AS_NODE" ]; then
+            _okcat '💡' '检测到 VS Code 终端，请手动执行 source ~/.bashrc 或重新打开终端以生效'
+        else
+            exec "$_SHELL" -i
+        fi
     fi
     return 0
 }

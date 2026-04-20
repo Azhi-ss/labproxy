@@ -252,14 +252,14 @@ func TestUpdate_KeyMsg_LeftRight(t *testing.T) {
 		t.Fatalf("expected focus to be options after right key, got %d", newM.focus)
 	}
 
-	// Right key again should switch to settings
+	// Right key again should wrap back to groups (two-column layout)
 	newModel, cmd = newModel.Update(msgRight)
 	if cmd != nil {
-		t.Fatal("expected nil command for right key to settings")
+		t.Fatal("expected nil command for right key wrap")
 	}
 	newM = newModel.(model)
-	if newM.focus != focusSettings {
-		t.Fatalf("expected focus to be settings after second right key, got %d", newM.focus)
+	if newM.focus != focusGroups {
+		t.Fatalf("expected focus to wrap to groups after second right key, got %d", newM.focus)
 	}
 }
 
@@ -363,7 +363,7 @@ func TestActivateSettingCmd_AllowLanAndTun(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
-	m.focus = focusSettings
+	m.settingsMode = true
 
 	m.settingsIndex = 2 // Allow LAN
 	result := m.activateSettingCmd()()
@@ -462,20 +462,35 @@ func TestView_BasicRender(t *testing.T) {
 	if view == "" {
 		t.Fatal("expected non-empty view")
 	}
-	if !strings.Contains(view, "LabProxy TUI") {
-		t.Fatal("expected view to contain 'LabProxy TUI'")
+	if !strings.Contains(view, "LabProxy") {
+		t.Fatal("expected view to contain 'LabProxy'")
 	}
 	if !strings.Contains(view, "connected") {
 		t.Fatal("expected view to contain 'connected'")
 	}
-	if !strings.Contains(view, "Settings") {
-		t.Fatal("expected view to contain 'Settings'")
-	}
+	// Settings is now a modal overlay, not in the main view; test separately
 	if !strings.Contains(view, "Connections") {
 		t.Fatal("expected view to contain 'Connections'")
 	}
+	// Settings is now a modal overlay, not in the main view
 	if !strings.Contains(view, "example.com") {
 		t.Fatal("expected view to contain rendered connection target")
+	}
+}
+
+func TestView_SettingsOverlay(t *testing.T) {
+	m := newLayoutTestModel()
+	m.settingsMode = true
+
+	view := m.View()
+	if !strings.Contains(view, "Settings") {
+		t.Fatal("expected settings overlay to contain 'Settings'")
+	}
+	if !strings.Contains(view, "Mode") {
+		t.Fatal("expected settings overlay to contain 'Mode'")
+	}
+	if !strings.Contains(view, "System Proxy") {
+		t.Fatal("expected settings overlay to contain 'System Proxy'")
 	}
 }
 
@@ -486,8 +501,8 @@ func TestView_SmallHeightHidesConnections(t *testing.T) {
 	m.height = headerHeight + footerHeight + 5
 
 	view := m.View()
-	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") || !strings.Contains(view, "Settings") {
-		t.Fatal("expected compact body to keep three top panels")
+	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") {
+		t.Fatal("expected compact body to keep two top panels")
 	}
 	if strings.Contains(view, "Connections") {
 		t.Fatal("expected connections panel to be hidden in small height")
@@ -530,14 +545,6 @@ func TestToggleFocus(t *testing.T) {
 	}
 	if m.statusLine != "focus: options" {
 		t.Fatalf("expected status line 'focus: options', got %q", m.statusLine)
-	}
-
-	m.toggleFocus()
-	if m.focus != focusSettings {
-		t.Fatalf("expected focus to be settings, got %d", m.focus)
-	}
-	if m.statusLine != "focus: settings" {
-		t.Fatalf("expected status line 'focus: settings', got %q", m.statusLine)
 	}
 
 	m.toggleFocus()
@@ -821,10 +828,5 @@ func TestFocusLabel(t *testing.T) {
 	m.focus = focusOptions
 	if m.focusLabel() != "options" {
 		t.Fatalf("focusLabel(): expected 'options', got %q", m.focusLabel())
-	}
-
-	m.focus = focusSettings
-	if m.focusLabel() != "settings" {
-		t.Fatalf("focusLabel(): expected 'settings', got %q", m.focusLabel())
 	}
 }

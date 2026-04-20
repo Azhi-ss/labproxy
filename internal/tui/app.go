@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type Options struct {
@@ -47,7 +48,6 @@ type paneFocus int
 const (
 	focusGroups paneFocus = iota
 	focusOptions
-	focusSettings
 )
 
 type keyMap struct {
@@ -125,6 +125,7 @@ type model struct {
 	groupIndex    int
 	optionIndex   int
 	settingsIndex int
+	settingsMode  bool
 
 	width  int
 	height int
@@ -181,10 +182,10 @@ func newModel(client *proxy.Client, opts Options) model {
 			Select:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply/select")),
 			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh delay")),
 			Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "focus settings")),
+			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "settings")),
 			Mode:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "cycle mode")),
 			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle proxy pref")),
-			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close search")),
+			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close / back")),
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		},
 	}
@@ -222,10 +223,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyState(msg.data)
 		m.statusLine = msg.status
 		m.lastError = nil
+		m.settingsMode = false
 		return m, nil
 	case errMsg:
 		m.lastError = msg.err
 		m.statusLine = msg.err.Error()
+		m.settingsMode = false
 		return m, nil
 	case tea.KeyMsg:
 		if m.searchMode {
@@ -251,6 +254,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+		case m.settingsMode:
+			switch {
+			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
+				m.settingsMode = false
+				m.statusLine = "settings closed"
+				return m, nil
+			case key.Matches(msg, m.keys.Up):
+				m.settingsIndex--
+				if m.settingsIndex < 0 {
+					m.settingsIndex = len(m.settingsItems()) - 1
+				}
+				return m, nil
+			case key.Matches(msg, m.keys.Down):
+				m.settingsIndex++
+				items := m.settingsItems()
+				if m.settingsIndex >= len(items) {
+					m.settingsIndex = 0
+				}
+				return m, nil
+			case key.Matches(msg, m.keys.Select):
+				return m, m.activateSettingCmd()
+			default:
+				return m, nil
+			}
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Search):
@@ -259,8 +286,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "type to filter groups or proxies"
 			return m, nil
 		case key.Matches(msg, m.keys.Settings):
-			m.focus = focusSettings
-			m.statusLine = "focus: settings"
+			m.settingsMode = true
+			m.statusLine = "settings — enter apply · esc close"
 			return m, nil
 		case key.Matches(msg, m.keys.Mode):
 			return m, m.cycleModeCmd()
@@ -289,8 +316,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = focusOptions
 				m.statusLine = "focus: options"
 				return m, nil
-			case focusSettings:
-				return m, m.activateSettingCmd()
 			default:
 				return m, m.switchProxyCmd()
 			}
@@ -303,6 +328,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	if m.width <= 0 {
 		return "loading…"
+	}
+
+	if m.settingsMode {
+		return m.renderSettingsOverlay()
 	}
 
 	header := m.renderHeader()
@@ -331,7 +360,7 @@ func (m *model) toggleFocus() {
 }
 
 func (m *model) moveFocus(delta int) {
-	order := []paneFocus{focusGroups, focusOptions, focusSettings}
+	order := []paneFocus{focusGroups, focusOptions}
 	current := 0
 	for idx, focus := range order {
 		if m.focus == focus {
@@ -356,8 +385,6 @@ func (m *model) move(delta int) {
 			return
 		}
 		m.optionIndex += delta
-	case focusSettings:
-		m.settingsIndex += delta
 	}
 	m.clampIndices()
 }
@@ -394,18 +421,6 @@ func (m *model) rebuildGroups() {
 }
 
 func (m *model) clampIndices() {
-	settingsCount := len(m.settingsItems())
-	if settingsCount == 0 {
-		m.settingsIndex = 0
-	} else {
-		if m.settingsIndex < 0 {
-			m.settingsIndex = 0
-		}
-		if m.settingsIndex >= settingsCount {
-			m.settingsIndex = settingsCount - 1
-		}
-	}
-
 	if len(m.groups) == 0 {
 		m.groupIndex = 0
 		m.optionIndex = 0
@@ -715,27 +730,62 @@ func (m model) currentGroup() *GroupView {
 }
 
 var (
+	// ── Theme palette ──────────────────────────────────────────────────
+	// Primary: cool cyan-blue for identity & structure
+	colorPrimary      = lipgloss.Color("39")  // bright blue
+	colorPrimaryMuted = lipgloss.Color("68")  // muted slate-blue
+	// Accent: vivid teal for focus & active states
+	colorAccent = lipgloss.Color("86") // bright cyan-green
+	// Surface: background tints for selection & status
+	colorSurfaceHigh = lipgloss.Color("62") // deep indigo — selection bg
+	colorSurfaceLow  = lipgloss.Color("236") // dark surface — subtle bg
+	// Content: text hierarchy
+	colorTextPrimary   = lipgloss.Color("252") // near-white
+	colorTextSecondary = lipgloss.Color("246") // mid-gray
+	colorTextMuted     = lipgloss.Color("243") // dim gray
+	// Semantic: state & delay colors
+	colorSuccess = lipgloss.Color("42")  // green  — low delay / on
+	colorWarning = lipgloss.Color("220") // yellow — mid delay
+	colorDanger  = lipgloss.Color("203") // red    — high delay / error
+	colorInfo    = lipgloss.Color("117") // light blue — informational
+
+	// ── Structural styles ──────────────────────────────────────────────
 	docStyle = lipgloss.NewStyle().
 			Padding(0, 1)
 
 	headerStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
+			BorderForeground(colorPrimary).
 			Padding(0, 1)
 
 	panelBaseStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			Padding(0, 1)
 
-	activePanelStyle   = panelBaseStyle.BorderForeground(lipgloss.Color("86"))
-	inactivePanelStyle = panelBaseStyle.BorderForeground(lipgloss.Color("240"))
+	activePanelStyle   = panelBaseStyle.BorderForeground(colorAccent)
+	inactivePanelStyle = panelBaseStyle.BorderForeground(lipgloss.Color("237"))
 
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
-	subtitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(lipgloss.Color("62")).Padding(0, 1)
-	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62"))
-	currentStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("78")).Bold(true)
+	// ── Typography ──────────────────────────────────────────────────────
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	subtitleStyle = lipgloss.NewStyle().Foreground(colorTextSecondary)
+
+	// ── Status & feedback ──────────────────────────────────────────────
+	statusStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("230")).
+			Background(colorSurfaceHigh).
+			Padding(0, 1)
+	mutedStyle    = lipgloss.NewStyle().Foreground(colorTextMuted)
+	selectedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorTextPrimary).
+			Background(colorSurfaceHigh)
+	currentStyle = lipgloss.NewStyle().
+			Foreground(colorAccent).
+			Bold(true)
+
+	// ── Semantic helpers ───────────────────────────────────────────────
+	onStyle  = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
+	offStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
 )
 
 func (m model) renderHeader() string {
@@ -746,20 +796,20 @@ func (m model) renderHeader() string {
 	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
 	titleRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		titleStyle.Render("LabProxy TUI"),
+		titleStyle.Render("LabProxy"),
 		"  ",
-		subtitleStyle.Render("3-pane dashboard · s settings · enter apply"),
+		subtitleStyle.Render("press s for settings"),
 	)
 
 	metaRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		statusPill("endpoint", fallback(m.endpoint, "-")),
-		statusPill("mode", fallback(m.mode, "unknown")),
-		statusPill("system proxy", boolLabel(m.systemProxyEnabled)),
-		statusPill("allow-lan", boolLabel(m.allowLanEnabled)),
+		statusPill("mode", modeLabel(m.mode)),
+		statusPill("proxy", boolLabel(m.systemProxyEnabled)),
+		statusPill("lan", boolLabel(m.allowLanEnabled)),
 		statusPill("tun", boolLabel(m.tunEnabled)),
-		statusPill("traffic ↑", formatBytes(m.up)),
-		statusPill("traffic ↓", formatBytes(m.down)),
+		statusPill("↑", formatBytes(m.up)),
+		statusPill("↓", formatBytes(m.down)),
 		statusPill("focus", m.focusLabel()),
 	)
 
@@ -775,7 +825,7 @@ func (m model) renderHeader() string {
 func statusPill(label, value string) string {
 	pill := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(lipgloss.Color("237")).
 		Padding(0, 1)
 	return pill.Render(fmt.Sprintf("%s %s", mutedStyle.Render(label), value))
 }
@@ -809,13 +859,13 @@ func (m model) renderBody(availableHeight int) string {
 		}
 	}
 
-	columnContentWidth := docWidth - columnGap*2 - panelFrameWidth*3
+	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
 	if columnContentWidth < 0 {
 		columnContentWidth = 0
 	}
+	// Two-column layout: Groups 35%, Options 65%
 	leftWidth := columnContentWidth / 3
-	middleWidth := columnContentWidth / 3
-	rightWidth := columnContentWidth - leftWidth - middleWidth
+	middleWidth := columnContentWidth - leftWidth
 	topContentHeight := max(0, topTotalHeight-panelFrameHeight)
 
 	top := lipgloss.NewStyle().MaxWidth(docWidth).MaxHeight(topTotalHeight).Render(
@@ -824,8 +874,6 @@ func (m model) renderBody(availableHeight int) string {
 			m.renderGroupsPanel(leftWidth, topContentHeight),
 			strings.Repeat(" ", columnGap),
 			m.renderOptionsPanel(middleWidth, topContentHeight),
-			strings.Repeat(" ", columnGap),
-			m.renderSettingsPanel(rightWidth, topContentHeight),
 		),
 	)
 	if connectionTotalHeight == 0 {
@@ -878,19 +926,33 @@ func (m model) renderOptionsPanel(width, height int) string {
 	return renderPanel(style, width, height, content)
 }
 
-func (m model) renderSettingsPanel(width, height int) string {
-	style := inactivePanelStyle
-	if m.focus == focusSettings {
-		style = activePanelStyle
-	}
-	content := renderPanelContent(
-		"Settings",
-		"Enter applies selected action",
-		m.visibleSettingRows(width, max(0, height)),
-		width,
-		height,
+func (m model) renderSettingsOverlay() string {
+	contentWidth := 32
+	// padding(1,2)=4 + border(2)=2 → total extra 6
+	totalWidth := contentWidth + 6
+
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccent).
+		Padding(1, 2).
+		Width(totalWidth)
+
+	title := titleStyle.Render("⚙ Settings")
+	subtitle := mutedStyle.Render("↑↓ move · enter apply · esc close")
+
+	rows := m.visibleSettingRows(contentWidth, 5)
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"",
+		subtitle,
+		"",
+		lipgloss.JoinVertical(lipgloss.Left, rows...),
 	)
-	return renderPanel(style, width, height, content)
+
+	modal := modalStyle.Render(content)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func (m model) renderConnectionsPanel(width, height int) string {
@@ -910,24 +972,55 @@ func (m model) visibleGroupRows(width, limit int) []string {
 		return nil
 	}
 	if len(m.groups) == 0 {
-		return []string{fitLine(mutedStyle.Render("No groups match the current filter."), width)}
+		return []string{fitLine(mutedStyle.Render("  No groups match the current filter."), width)}
 	}
 	start, end := window(m.groupIndex, len(m.groups), limit)
 	rows := make([]string, 0, end-start)
+	
 	for idx := start; idx < end; idx++ {
 		group := m.groups[idx]
+		isSelected := idx == m.groupIndex
+		
 		prefix := "  "
-		if idx == m.groupIndex {
-			prefix = "▶ "
+		if isSelected {
+			prefix = "▸ "
 		}
-		line := truncate(fmt.Sprintf("%s%s [%s]", prefix, group.Name, fallback(group.Current, "-")), width)
-		switch {
-		case idx == m.groupIndex:
-			line = fitLine(selectedStyle.Render(line), width)
-		case group.Current != "":
-			line = fitLine(currentStyle.Render(line), width)
-		default:
-			line = fitLine(line, width)
+
+		currentMarkLen := 0
+		if group.Current != "" {
+			currentMarkLen = 1 + 1 + len([]rune(group.Current)) + 1 // " [Current]"
+		}
+
+		reservedPrefix := 2 // "▸ " or "  "
+		nameWidth := width - reservedPrefix - currentMarkLen
+		if nameWidth < 4 {
+			nameWidth = 4
+		}
+		
+		truncatedName := ansi.Truncate(group.Name, nameWidth, "…")
+
+		baseStyle := lipgloss.NewStyle()
+		if isSelected {
+			baseStyle = selectedStyle
+		} else if group.Current != "" {
+			baseStyle = currentStyle
+		}
+
+		currentMark := ""
+		if group.Current != "" {
+			bracketStyle := mutedStyle
+			curStyle := currentStyle
+			if isSelected {
+				bracketStyle = bracketStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
+				curStyle = curStyle.Inherit(selectedStyle).Foreground(colorAccent)
+			}
+			currentMark = baseStyle.Render(" ") + bracketStyle.Render("[") + curStyle.Render(group.Current) + bracketStyle.Render("]")
+		}
+
+		line := baseStyle.Render(prefix+truncatedName) + currentMark
+		visLen := ansi.StringWidth(line)
+		if visLen < width {
+			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
 		}
 		rows = append(rows, line)
 	}
@@ -940,21 +1033,52 @@ func (m model) visibleOptionRows(width, limit int) []string {
 	}
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 {
-		return []string{fitLine(mutedStyle.Render("No selectable nodes in this group."), width)}
+		return []string{fitLine(mutedStyle.Render("  No selectable nodes in this group."), width)}
 	}
 	start, end := window(m.optionIndex, len(group.Options), limit)
 	rows := make([]string, 0, end-start)
 	for idx := start; idx < end; idx++ {
 		option := group.Options[idx]
-		marker := " "
-		if option.Selected {
-			marker = "✓"
+		isSelected := idx == m.optionIndex
+
+		baseStyle := lipgloss.NewStyle()
+		if isSelected {
+			baseStyle = selectedStyle
 		}
-		line := truncate(fmt.Sprintf("%s %s %s", marker, option.Name, plainDelayLabel(option.DelayMS)), width)
-		if idx == m.optionIndex {
-			line = fitLine(selectedStyle.Render(line), width)
+
+		var markerStyle lipgloss.Style
+		markerChar := "○"
+		if option.Selected {
+			markerStyle = lipgloss.NewStyle().Foreground(colorSuccess)
+			markerChar = "●"
 		} else {
-			line = fitLine(line, width)
+			markerStyle = mutedStyle
+		}
+		if isSelected {
+			markerStyle = markerStyle.Inherit(selectedStyle).Foreground(markerStyle.GetForeground())
+		}
+
+		delayStyle := getDelayStyle(option.DelayMS)
+		if isSelected {
+			delayStyle = delayStyle.Inherit(selectedStyle).Foreground(delayStyle.GetForeground())
+		}
+		delayStrPlain := plainDelayLabel(option.DelayMS)
+
+		reserved := 1 + 1 + 1 + 1 + len(delayStrPlain)
+		nameWidth := width - reserved
+		if nameWidth < 4 {
+			nameWidth = 4
+		}
+		truncatedName := ansi.Truncate(option.Name, nameWidth, "…")
+
+		line := baseStyle.Render(" ") + 
+				markerStyle.Render(markerChar) + 
+				baseStyle.Render(" "+truncatedName+" ") + 
+				delayStyle.Render(delayStrPlain)
+
+		visLen := ansi.StringWidth(line)
+		if visLen < width {
+			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
 		}
 		rows = append(rows, line)
 	}
@@ -967,11 +1091,11 @@ func (m model) settingsItems() []settingItem {
 		restartHint = "apply saved mixin changes"
 	}
 	return []settingItem{
-		{Label: "Mode", Value: fallback(m.mode, "rule"), Hint: "live + persisted", Action: settingCycleMode},
-		{Label: "System Proxy", Value: boolLabel(m.systemProxyEnabled), Hint: "new shells / next start", Action: settingToggleSystemProxy},
-		{Label: "Allow LAN", Value: boolLabel(m.allowLanEnabled), Hint: "saved; restart required", Action: settingToggleAllowLan},
-		{Label: "Tun", Value: boolLabel(m.tunEnabled), Hint: "saved; restart required", Action: settingToggleTun},
-		{Label: "Apply / Restart", Value: "run", Hint: restartHint, Action: settingRestart},
+		{Label: "Mode", Value: fallback(m.mode, "rule"), Hint: "cycle", Action: settingCycleMode},
+		{Label: "System Proxy", Value: boolLabel(m.systemProxyEnabled), Hint: "new shells", Action: settingToggleSystemProxy},
+		{Label: "Allow LAN", Value: boolLabel(m.allowLanEnabled), Hint: "restart", Action: settingToggleAllowLan},
+		{Label: "Tun", Value: boolLabel(m.tunEnabled), Hint: "restart", Action: settingToggleTun},
+		{Label: "Apply / Restart", Value: "", Hint: restartHint, Action: settingRestart},
 	}
 }
 
@@ -981,21 +1105,77 @@ func (m model) visibleSettingRows(width, limit int) []string {
 	}
 	items := m.settingsItems()
 	if len(items) == 0 {
-		return []string{fitLine(mutedStyle.Render("No settings available."), width)}
+		return []string{fitLine(mutedStyle.Render("  No settings available."), width)}
 	}
 	start, end := window(m.settingsIndex, len(items), limit)
 	rows := make([]string, 0, end-start)
 	for idx := start; idx < end; idx++ {
 		item := items[idx]
+		isSelected := idx == m.settingsIndex
 		prefix := "  "
-		if idx == m.settingsIndex {
-			prefix = "▶ "
+		if isSelected {
+			prefix = "▸ "
 		}
-		line := truncate(fmt.Sprintf("%s%s %s %s", prefix, item.Label, item.Value, item.Hint), width)
-		if idx == m.settingsIndex {
-			line = fitLine(selectedStyle.Render(line), width)
-		} else {
-			line = fitLine(line, width)
+
+		baseStyle := lipgloss.NewStyle()
+		if isSelected {
+			baseStyle = selectedStyle
+		}
+
+		var valueStyle lipgloss.Style
+		var valueStrPlain string
+		switch item.Action {
+		case settingCycleMode:
+			valueStrPlain = strings.ToLower(strings.TrimSpace(item.Value))
+			valueStyle = getModeStyle(valueStrPlain)
+		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
+			isOn := item.Value == boolLabel(true)
+			valueStrPlain = "off"
+			valueStyle = offStyle
+			if isOn {
+				valueStrPlain = "on"
+				valueStyle = onStyle
+			}
+		case settingRestart:
+			valueStrPlain = "↻ restart"
+			valueStyle = lipgloss.NewStyle().Foreground(colorInfo).Bold(true)
+		default:
+			valueStrPlain = item.Value
+			valueStyle = mutedStyle
+		}
+
+		if isSelected {
+			valueStyle = valueStyle.Inherit(selectedStyle).Foreground(valueStyle.GetForeground())
+		}
+
+		hintPart := ""
+		hintLen := 0
+		if isSelected && item.Hint != "" {
+			hintPart = "  " + item.Hint
+			hintLen = len([]rune(hintPart))
+		}
+
+		reserved := len([]rune(prefix)) + 2 + len([]rune(valueStrPlain)) + hintLen
+		labelWidth := width - reserved
+		if labelWidth < 4 {
+			labelWidth = 4
+		}
+		truncatedLabel := ansi.Truncate(item.Label, labelWidth, "…")
+
+		line := baseStyle.Render(prefix+truncatedLabel+"  ") + 
+				valueStyle.Render(valueStrPlain)
+		
+		if hintPart != "" {
+			hintStyle := mutedStyle
+			if isSelected {
+				hintStyle = hintStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
+			}
+			line += hintStyle.Render(hintPart)
+		}
+
+		visLen := ansi.StringWidth(line)
+		if visLen < width {
+			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
 		}
 		rows = append(rows, line)
 	}
@@ -1008,17 +1188,15 @@ func (m model) visibleConnectionRows(width, limit int) []string {
 	}
 	connections := m.connections.Connections
 	if len(connections) == 0 {
-		return []string{fitLine(mutedStyle.Render("No active connections."), width)}
+		return []string{fitLine(mutedStyle.Render("  No active connections."), width)}
 	}
 	if len(connections) > limit {
 		connections = connections[:limit]
 	}
 	rows := make([]string, 0, len(connections))
 	for _, conn := range connections {
-		line := truncate(
-			fmt.Sprintf("%s %s %s ↓%s ↑%s", connectionTarget(conn), conn.Rule, strings.Join(conn.Chains, " → "), formatSize(conn.Download), formatSize(conn.Upload)),
-			width,
-		)
+		line := fmt.Sprintf(" %s  %s  %s  ↓%s ↑%s", connectionTarget(conn), mutedStyle.Render(conn.Rule), strings.Join(conn.Chains, " → "), formatSize(conn.Download), formatSize(conn.Upload))
+		line = ansi.Truncate(line, width, "…")
 		rows = append(rows, fitLine(line, width))
 	}
 	return rows
@@ -1052,9 +1230,9 @@ func renderPanelContent(title, subtitle string, rows []string, width, height int
 	}
 
 	lines := make([]string, 0, height)
-	lines = append(lines, fitLine(titleStyle.Render(truncate(title, width)), width))
+	lines = append(lines, fitLine(titleStyle.Render(ansi.Truncate(title, width, "…")), width))
 	if height >= 2 && strings.TrimSpace(subtitle) != "" {
-		lines = append(lines, fitLine(subtitleStyle.Render(truncate(subtitle, width)), width))
+		lines = append(lines, fitLine(subtitleStyle.Render(ansi.Truncate(subtitle, width, "…")), width))
 	}
 
 	remaining := height - len(lines)
@@ -1098,29 +1276,28 @@ func fallback(value, alt string) string {
 }
 
 func truncate(value string, width int) string {
-	r := []rune(value)
-	if len(r) <= width {
-		return value
+	return ansi.Truncate(value, width, "…")
+}
+
+func getDelayStyle(ms int) lipgloss.Style {
+	if ms <= 0 {
+		return mutedStyle
 	}
-	if width <= 1 {
-		return string(r[:width])
+	switch {
+	case ms < 150:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	case ms < 300:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 	}
-	return string(r[:width-1]) + "…"
 }
 
 func delayLabel(ms int) string {
 	if ms <= 0 {
 		return mutedStyle.Render("--")
 	}
-	label := fmt.Sprintf("%dms", ms)
-	switch {
-	case ms < 150:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(label)
-	case ms < 300:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(label)
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render(label)
-	}
+	return getDelayStyle(ms).Render(fmt.Sprintf("%dms", ms))
 }
 
 func window(selected, total, limit int) (int, int) {
@@ -1148,9 +1325,30 @@ func max(a, b int) int {
 
 func boolLabel(value bool) string {
 	if value {
-		return "on"
+		return onStyle.Render("on")
 	}
-	return "off"
+	return offStyle.Render("off")
+}
+
+func getModeStyle(mode string) lipgloss.Style {
+	switch mode {
+	case "rule":
+		return lipgloss.NewStyle().Foreground(colorSuccess)
+	case "global":
+		return lipgloss.NewStyle().Foreground(colorWarning)
+	case "direct":
+		return lipgloss.NewStyle().Foreground(colorInfo)
+	default:
+		return mutedStyle
+	}
+}
+
+func modeLabel(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "rule" && mode != "global" && mode != "direct" {
+		mode = fallback(mode, "unknown")
+	}
+	return getModeStyle(mode).Render(mode)
 }
 
 func nextMode(current string) string {
@@ -1178,8 +1376,6 @@ func (m model) focusLabel() string {
 	switch m.focus {
 	case focusGroups:
 		return "groups"
-	case focusSettings:
-		return "settings"
 	default:
 		return "options"
 	}
