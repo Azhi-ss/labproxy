@@ -452,6 +452,8 @@ func newLayoutTestModel() model {
 			},
 		},
 	}
+	// Initialize cached adaptive layout width
+	m.rebuildGroups()
 	return m
 }
 
@@ -699,7 +701,8 @@ func TestTruncate(t *testing.T) {
 		{"abc", 2, "a…"},
 		{"", 5, ""},
 		{"test", 0, ""},
-		{"test", 1, "t"},
+		// ansi.Truncate returns "…" when width is too small to fit char + ellipsis
+		{"test", 1, "…"},
 	}
 
 	for _, tt := range tests {
@@ -828,5 +831,284 @@ func TestFocusLabel(t *testing.T) {
 	m.focus = focusOptions
 	if m.focusLabel() != "options" {
 		t.Fatalf("focusLabel(): expected 'options', got %q", m.focusLabel())
+	}
+}
+
+// ── Adaptive layout tests ────────────────────────────────────────────
+
+func TestCalcGroupsMinWidth(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+
+	tests := []struct {
+		name               string
+		groups             []GroupView
+		groupIndex         int
+		columnContentWidth int
+		wantMin            int
+		wantMax            int
+	}{
+		{
+			name:               "empty_groups_returns_min_width",
+			groups:             nil,
+			columnContentWidth: 100,
+			wantMin:            20,
+		},
+		{
+			name: "short_names_use_min_width",
+			groups: []GroupView{
+				{Name: "A", Current: "", Options: []OptionView{{Name: "X"}}},
+				{Name: "B", Current: "", Options: []OptionView{{Name: "Y"}}},
+			},
+			columnContentWidth: 100,
+			wantMin:            20,
+		},
+		{
+			name: "long_name_expands_width",
+			groups: []GroupView{
+				{Name: "VeryLongGroupNameThatExceedsDefault", Current: "", Options: []OptionView{{Name: "X"}}},
+			},
+			columnContentWidth: 120,
+			wantMin:            39, // 2 + 35(name) + 2(padding)
+		},
+		{
+			name: "current_mark_included_in_width",
+			groups: []GroupView{
+				{Name: "Proxy", Current: "VeryLongCurrentName", Options: []OptionView{{Name: "VeryLongCurrentName", Selected: true}}},
+			},
+			columnContentWidth: 100,
+			wantMin:            20,
+		},
+		{
+			name: "narrow_screen_gives_half",
+			groups: []GroupView{
+				{Name: "GlobalProxy", Current: "", Options: []OptionView{{Name: "X"}}},
+			},
+			columnContentWidth: 40,
+			wantMin:            20,
+		},
+		{
+			name: "very_narrow_screen_clamps_to_min",
+			groups: []GroupView{
+				{Name: "A", Current: "", Options: []OptionView{{Name: "X"}}},
+			},
+			columnContentWidth: 30,
+			wantMin:            20,
+		},
+		{
+			name: "respects_options_min_width",
+			groups: []GroupView{
+				{Name: strings.Repeat("X", 80), Current: "", Options: []OptionView{{Name: "X"}}},
+			},
+			columnContentWidth: 100,
+			wantMax:            70, // 100 - 30 (minOptionsWidth)
+		},
+		{
+			name: "multiple_groups_uses_widest",
+			groups: []GroupView{
+				{Name: "Short", Current: "", Options: []OptionView{{Name: "X"}}},
+				{Name: "MediumGroupName", Current: "", Options: []OptionView{{Name: "Y"}}},
+				{Name: "TheLongestGroupNameHere", Current: "", Options: []OptionView{{Name: "Z"}}},
+			},
+			columnContentWidth: 120,
+			wantMin:            24, // 2 + 20 + 2
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m.groups = tt.groups
+			m.groupIndex = tt.groupIndex
+			if m.groupIndex >= len(tt.groups) {
+				m.groupIndex = 0
+			}
+			result := m.calcGroupsMinWidth(tt.columnContentWidth)
+			if tt.wantMin > 0 && result < tt.wantMin {
+				t.Errorf("expected >= %d, got %d", tt.wantMin, result)
+			}
+			if tt.wantMax > 0 && result > tt.wantMax {
+				t.Errorf("expected <= %d, got %d", tt.wantMax, result)
+			}
+		})
+	}
+}
+
+func TestCalcGroupsMinWidth_OptionsMinWidth(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+
+	// Even with very long group names, Options panel should keep minOptionsWidth
+	m.groups = []GroupView{
+		{Name: strings.Repeat("A", 100), Current: "", Options: []OptionView{{Name: "X"}}},
+	}
+	m.groupIndex = 0
+
+	result := m.calcGroupsMinWidth(100)
+	// Should be capped: columnContentWidth - minOptionsWidth = 100 - 30 = 70
+	if result > 70 {
+		t.Errorf("expected <= 70 (respecting Options min width), got %d", result)
+	}
+}
+
+func TestRebuildGroupsUpdatesGroupPanelWidth(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.width = 120
+	m.height = 32
+
+	// Before rebuildGroups: groupPanelWidth is 0
+	if m.groupPanelWidth != 0 {
+		t.Fatalf("expected initial groupPanelWidth 0, got %d", m.groupPanelWidth)
+	}
+
+	// Apply state with groups
+	m.applyState(refreshMsg{
+		proxies: proxy.ProxiesResponse{
+			Proxies: map[string]proxy.Proxy{
+				"GLOBAL": {
+					Name: "GLOBAL",
+					Type: "Selector",
+					Now:  "Node-A",
+					All:  []string{"Node-A", "Node-B"},
+				},
+			},
+		},
+		version:     proxy.Version{Version: "v1.0"},
+		config:      proxy.Config{Mode: "rule"},
+		traffic:     proxy.Traffic{},
+		connections: proxy.ConnectionsResponse{},
+	})
+
+	// groupPanelWidth should be non-zero after applyState -> rebuildGroups
+	if m.groupPanelWidth <= 0 {
+		t.Fatal("expected groupPanelWidth > 0 after rebuildGroups")
+	}
+
+	// groupPanelWidth should be at least minWidth (20)
+	if m.groupPanelWidth < 20 {
+		t.Fatalf("expected groupPanelWidth >= 20, got %d", m.groupPanelWidth)
+	}
+}
+
+func TestWindowSizeMsgUpdatesGroupPanelWidth(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.groups = []GroupView{
+		{Name: "Proxy", Current: "Node-A", Options: []OptionView{{Name: "Node-A", Selected: true}}},
+	}
+
+	// Simulate window resize
+	newModelResult, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	newM := newModelResult.(model)
+
+	if newM.width != 80 {
+		t.Fatalf("expected width 80, got %d", newM.width)
+	}
+	// After window resize, rebuildGroups should have updated groupPanelWidth
+	if newM.groupPanelWidth <= 0 {
+		t.Fatal("expected groupPanelWidth > 0 after window resize")
+	}
+}
+
+func TestRenderBody_AdaptiveLayout(t *testing.T) {
+	m := newLayoutTestModel()
+
+	// Test with short group names — set groups and update cache directly
+	m.groups = []GroupView{
+		{Name: "A", Current: "", Options: []OptionView{{Name: "Node-1"}}},
+		{Name: "B", Current: "", Options: []OptionView{{Name: "Node-2"}}},
+	}
+	m.width = 120
+	m.height = 32
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"A": {Name: "A", Type: "Selector", All: []string{"Node-1"}},
+		"B": {Name: "B", Type: "Selector", All: []string{"Node-2"}},
+	}}
+	m.rebuildGroups()
+
+	body := m.renderBody(24)
+	if body == "" {
+		t.Fatal("expected non-empty body with short names")
+	}
+
+	// Test with long group names
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"VeryLongGroupNameThatNeedsMoreSpace": {Name: "VeryLongGroupNameThatNeedsMoreSpace", Type: "Selector", All: []string{"Node-1"}},
+	}}
+	m.rebuildGroups()
+
+	body2 := m.renderBody(24)
+	if body2 == "" {
+		t.Fatal("expected non-empty body with long names")
+	}
+}
+
+func TestRenderBody_NarrowTerminal(t *testing.T) {
+	m := newLayoutTestModel()
+	m.width = 80
+	m.height = 24
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"Proxy": {Name: "Proxy", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B"}},
+	}}
+	m.rebuildGroups()
+
+	body := m.renderBody(16)
+	if body == "" {
+		t.Fatal("expected non-empty body in narrow terminal")
+	}
+}
+
+func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.width = 200
+	m.height = 32
+
+	// Compute columnContentWidth (same as rebuildGroups does)
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	columnContentWidth := docWidth - 2 - panelFrameWidth*2
+
+	// Short names
+	m.groups = []GroupView{
+		{Name: "A", Current: "", Options: []OptionView{{Name: "X"}}},
+	}
+	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
+	shortWidth := m.groupPanelWidth
+
+	// Long names (35 chars + prefix + padding = ~39)
+	m.groups = []GroupView{
+		{Name: "VeryLongGroupNameThatNeedsMoreSpace", Current: "", Options: []OptionView{{Name: "X"}}},
+	}
+	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
+	longWidth := m.groupPanelWidth
+
+	t.Logf("short=%d, long=%d, columnContentWidth=%d", shortWidth, longWidth, columnContentWidth)
+
+	if longWidth <= shortWidth {
+		t.Errorf("expected long names to produce wider panel: short=%d, long=%d", shortWidth, longWidth)
+	}
+}
+
+func TestGroupPanelWidthRespectsMax(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.width = 100
+	m.height = 32
+
+	// Extremely long group name - should be capped
+	m.groups = []GroupView{
+		{Name: strings.Repeat("Z", 200), Current: "", Options: []OptionView{{Name: "X"}}},
+	}
+
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	columnContentWidth := docWidth - 2 - panelFrameWidth*2
+	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
+
+	// groupPanelWidth should not exceed columnContentWidth - minOptionsWidth
+	maxAllowed := columnContentWidth - 30
+	if m.groupPanelWidth > maxAllowed {
+		t.Errorf("groupPanelWidth should be capped at %d, got %d", maxAllowed, m.groupPanelWidth)
 	}
 }

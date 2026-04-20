@@ -130,6 +130,9 @@ type model struct {
 	width  int
 	height int
 
+	// Cached adaptive layout values (updated by rebuildGroups)
+	groupPanelWidth int
+
 	search     textinput.Model
 	searchMode bool
 	help       help.Model
@@ -201,6 +204,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, msg.Width)
 		m.height = max(1, msg.Height)
 		m.search.Width = min(28, max(12, m.width/4))
+		m.rebuildGroups()
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(m.refreshCmd(), tickCmd())
@@ -417,6 +421,16 @@ func (m *model) rebuildGroups() {
 				}
 			}
 		}
+	}
+
+	// Update cached adaptive layout width for Groups panel
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
+	if columnContentWidth > 0 {
+		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
+	} else {
+		m.groupPanelWidth = 20 // fallback: matches minGroupsWidth in calcGroupsMinWidth
 	}
 }
 
@@ -750,6 +764,9 @@ var (
 	colorInfo    = lipgloss.Color("117") // light blue — informational
 
 	// ── Structural styles ──────────────────────────────────────────────
+	// ── Layout constants ──────────────────────────────────────────────
+	columnGap = 2 // horizontal gap between Groups and Options panels
+
 	docStyle = lipgloss.NewStyle().
 			Padding(0, 1)
 
@@ -830,13 +847,73 @@ func statusPill(label, value string) string {
 	return pill.Render(fmt.Sprintf("%s %s", mutedStyle.Render(label), value))
 }
 
+// calcGroupsMinWidth computes the optimal width for the Groups panel
+// based on actual group name lengths, with min/max boundaries.
+// It also considers the Options panel's minimum width (minOptionsWidth) and
+// the actual content width needed by the currently displayed options, ensuring
+// both panels have enough space.
+func (m model) calcGroupsMinWidth(columnContentWidth int) int {
+	const (
+		minGroupsWidth  = 20 // minimum usable width for Groups panel
+		minOptionsWidth = 30 // minimum usable width for Options panel
+		reservedPrefix  = 2  // "▸ " or "  "
+		rightPadding    = 2  // right-side padding for Groups panel content
+	)
+
+	if columnContentWidth <= minGroupsWidth+minOptionsWidth {
+		// Very narrow: give Groups at least minGroupsWidth (if possible) or half
+		return max(minGroupsWidth, columnContentWidth/2)
+	}
+
+	// Find the longest group row width needed
+	maxGroupRowWidth := 0
+	for _, group := range m.groups {
+		currentMarkLen := 0
+		if group.Current != "" {
+			currentMarkLen = ansi.StringWidth(" [" + group.Current + "]")
+		}
+		nameWidth := ansi.StringWidth(group.Name)
+		rowWidth := reservedPrefix + nameWidth + currentMarkLen + rightPadding
+		if rowWidth > maxGroupRowWidth {
+			maxGroupRowWidth = rowWidth
+		}
+	}
+
+	// No groups visible: fall back to reasonable default
+	if maxGroupRowWidth == 0 {
+		maxGroupRowWidth = minGroupsWidth
+	}
+
+	// Calculate the actual minimum width the Options panel needs
+	// based on the currently selected group's option content
+	optionsContentWidth := minOptionsWidth
+	if group := m.currentGroup(); group != nil {
+		for _, opt := range group.Options {
+			// Format: " ● name delay" — marker(1) + space(1) + name + space(1) + delay
+			optRowWidth := 1 + 1 + ansi.StringWidth(opt.Name) + 1 + len(plainDelayLabel(opt.DelayMS))
+			if optRowWidth > optionsContentWidth {
+				optionsContentWidth = optRowWidth
+			}
+		}
+	}
+
+	// Clamp: at least minGroupsWidth, and ensure Options gets enough space
+	maxAllowed := max(minGroupsWidth, columnContentWidth-optionsContentWidth)
+	if maxGroupRowWidth < minGroupsWidth {
+		maxGroupRowWidth = minGroupsWidth
+	} else if maxGroupRowWidth > maxAllowed {
+		maxGroupRowWidth = maxAllowed
+	}
+
+	return maxGroupRowWidth
+}
+
 func (m model) renderBody(availableHeight int) string {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if availableHeight <= 0 || docWidth <= 0 {
 		return docStyle.Width(docWidth).Render("")
 	}
 
-	const columnGap = 2
 	const rowGap = 1
 
 	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
@@ -863,8 +940,9 @@ func (m model) renderBody(availableHeight int) string {
 	if columnContentWidth < 0 {
 		columnContentWidth = 0
 	}
-	// Two-column layout: Groups 35%, Options 65%
-	leftWidth := columnContentWidth / 3
+
+	// Dynamic adaptive width: use cached Groups panel width
+	leftWidth := m.groupPanelWidth
 	middleWidth := columnContentWidth - leftWidth
 	topContentHeight := max(0, topTotalHeight-panelFrameHeight)
 
@@ -988,7 +1066,8 @@ func (m model) visibleGroupRows(width, limit int) []string {
 
 		currentMarkLen := 0
 		if group.Current != "" {
-			currentMarkLen = 1 + 1 + len([]rune(group.Current)) + 1 // " [Current]"
+			// " [Current]" = space + bracket + name + bracket, use visual width
+			currentMarkLen = ansi.StringWidth(" [" + group.Current + "]")
 		}
 
 		reservedPrefix := 2 // "▸ " or "  "
