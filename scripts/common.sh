@@ -130,12 +130,21 @@ _set_var() {
     }
 
     # rc文件路径
-    command -v bash >&/dev/null && {
+    if command -v bash >&/dev/null; then
         SHELL_RC_BASH="${home}/.bashrc"
-    }
-    command -v zsh >&/dev/null && {
+    else
+        SHELL_RC_BASH=""
+    fi
+    if command -v zsh >&/dev/null; then
         SHELL_RC_ZSH="${home}/.zshrc"
-    }
+    else
+        SHELL_RC_ZSH=""
+    fi
+    if command -v fish >&/dev/null; then
+        SHELL_RC_FISH="${home}/.config/fish/config.fish"
+    else
+        SHELL_RC_FISH=""
+    fi
 
 
     LABPROXY_CRON_TAB="user"  # 标记使用用户级crontab
@@ -172,6 +181,10 @@ _rc_managed_line() {
     printf 'source %s/common.sh && source %s/proxyctl.sh && watch_proxy' "$LABPROXY_SCRIPT_DIR" "$LABPROXY_SCRIPT_DIR"
 }
 
+_rc_managed_line_fish() {
+    printf 'set -gx PATH %s/.labproxy/bin $PATH' "$HOME"
+}
+
 _rc_block_begin() {
     printf '%s\n' '# >>> labproxy >>>'
 }
@@ -188,6 +201,39 @@ _write_rc_block() {
     begin_marker=$(_rc_block_begin)
     end_marker=$(_rc_block_end)
     managed_line=$(_rc_managed_line)
+
+    mkdir -p "$(dirname "$rc_file")"
+    touch "$rc_file"
+
+    awk \
+        -v begin_marker="$begin_marker" \
+        -v end_marker="$end_marker" \
+        -v managed_line="$managed_line" '
+        $0 == begin_marker {
+            in_block = 1
+            next
+        }
+        $0 == end_marker {
+            in_block = 0
+            next
+        }
+        in_block { next }
+        $0 == managed_line { next }
+        { print }
+        ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
+
+    [ -s "$rc_file" ] && printf '\n' >> "$rc_file"
+    printf '%s\n%s\n%s\n' "$begin_marker" "$managed_line" "$end_marker" >> "$rc_file"
+}
+
+_write_rc_block_fish() {
+    local rc_file=$1
+    local tmp_file="${rc_file}.tmp.$$"
+    local begin_marker end_marker managed_line
+
+    begin_marker=$(_rc_block_begin)
+    end_marker=$(_rc_block_end)
+    managed_line=$(_rc_managed_line_fish)
 
     mkdir -p "$(dirname "$rc_file")"
     touch "$rc_file"
@@ -243,6 +289,36 @@ _remove_rc_block() {
         ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
 }
 
+_remove_rc_block_fish() {
+    local rc_file=$1
+    local tmp_file="${rc_file}.tmp.$$"
+    local begin_marker end_marker managed_line
+
+    [ -n "$rc_file" ] || return 0
+    [ -f "$rc_file" ] || return 0
+
+    begin_marker=$(_rc_block_begin)
+    end_marker=$(_rc_block_end)
+    managed_line=$(_rc_managed_line_fish)
+
+    awk \
+        -v begin_marker="$begin_marker" \
+        -v end_marker="$end_marker" \
+        -v managed_line="$managed_line" '
+        $0 == begin_marker {
+            in_block = 1
+            next
+        }
+        $0 == end_marker {
+            in_block = 0
+            next
+        }
+        in_block { next }
+        $0 == managed_line { next }
+        { print }
+        ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
+}
+
 _set_rc() {
     local rc_file
 
@@ -250,13 +326,16 @@ _set_rc() {
         for rc_file in "$SHELL_RC_BASH" "$SHELL_RC_ZSH"; do
             _remove_rc_block "$rc_file"
         done
-        return
+        [ -n "${SHELL_RC_FISH:-}" ] && _remove_rc_block_fish "$SHELL_RC_FISH"
+        return 0
     }
 
     for rc_file in "$SHELL_RC_BASH" "$SHELL_RC_ZSH"; do
         [ -n "$rc_file" ] || continue
         _write_rc_block "$rc_file"
     done
+    [ -n "${SHELL_RC_FISH:-}" ] && _write_rc_block_fish "$SHELL_RC_FISH"
+    :
 }
 
 # 默认集成、安装mihomo内核
