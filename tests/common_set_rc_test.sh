@@ -24,6 +24,7 @@ set -u
 LABPROXY_SCRIPT_DIR="$TEST_HOME/.labproxy/scripts"
 SHELL_RC_BASH="$TEST_HOME/.bashrc"
 SHELL_RC_ZSH="$TEST_HOME/.zshrc"
+SHELL_RC_FISH="$TEST_HOME/.config/fish/config.fish"
 mkdir -p "$LABPROXY_SCRIPT_DIR"
 
 assert_equals() {
@@ -67,6 +68,11 @@ EOF
 
     cat > "$SHELL_RC_ZSH" <<'EOF'
 export KEEP_ZSH=1
+EOF
+
+    mkdir -p "$(dirname "$SHELL_RC_FISH")"
+    cat > "$SHELL_RC_FISH" <<'EOF'
+set -gx KEEP_FISH 1
 EOF
 }
 
@@ -131,3 +137,43 @@ EOF
 run_test "_set_rc adds managed block once" test_set_rc_adds_managed_block_once
 run_test "_set_rc unset removes managed block and keeps other content" test_set_rc_unset_removes_managed_block_and_keeps_other_content
 run_test "_set_rc rewrites existing managed block without duplication" test_set_rc_rewrites_existing_managed_block_without_duplication
+
+test_set_rc_adds_fish_managed_block() {
+    _set_rc
+
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "# >>> labproxy >>>")" "fish begin marker count"
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "# <<< labproxy <<<")" "fish end marker count"
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "set -gx LABPROXY_HOME $HOME/.labproxy")" "fish LABPROXY_HOME line count"
+    assert_equals 1 "$(count_in_file "$SHELL_RC_FISH" "set -gx PATH $HOME/.labproxy/bin \$PATH")" "fish PATH line count"
+    assert_file_contains "$SHELL_RC_FISH" "set -gx KEEP_FISH 1"
+}
+
+test_set_rc_unset_removes_fish_managed_block() {
+    _set_rc
+    _set_rc unset
+
+    assert_file_not_contains "$SHELL_RC_FISH" "# >>> labproxy >>>"
+    assert_file_not_contains "$SHELL_RC_FISH" "set -gx LABPROXY_HOME"
+    assert_file_not_contains "$SHELL_RC_FISH" "set -gx PATH $HOME/.labproxy/bin \$PATH"
+    assert_file_contains "$SHELL_RC_FISH" "set -gx KEEP_FISH 1"
+}
+
+test_set_rc_fish_no_bash_source_line() {
+    _set_rc
+
+    # Fish rc should NOT contain bash-style source commands
+    assert_file_not_contains "$SHELL_RC_FISH" "source $LABPROXY_SCRIPT_DIR/common.sh"
+    assert_file_not_contains "$SHELL_RC_FISH" "watch_proxy"
+}
+
+test_set_rc_bash_no_fish_set_line() {
+    _set_rc
+
+    # Bash rc should NOT contain fish-style set commands
+    assert_file_not_contains "$SHELL_RC_BASH" "set -gx PATH"
+}
+
+run_test "_set_rc adds fish managed block" test_set_rc_adds_fish_managed_block
+run_test "_set_rc unset removes fish managed block" test_set_rc_unset_removes_fish_managed_block
+run_test "_set_rc fish has no bash source line" test_set_rc_fish_no_bash_source_line
+run_test "_set_rc bash has no fish set line" test_set_rc_bash_no_fish_set_line
