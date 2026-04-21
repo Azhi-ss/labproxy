@@ -64,6 +64,30 @@ if [ -n "$url" ]; then
     echo "$url" > "$LABPROXY_CONFIG_URL"
 fi
 
+# 交互式选择语言
+echo ""
+echo "请选择界面语言 / Please select your language:"
+echo "  1) 中文"
+echo "  2) English"
+lang_choice=""
+while [ -z "$lang_choice" ]; do
+    echo -n "$(_okcat '🌐' '输入选项 (1/2):')"
+    read -r choice
+    case "$choice" in
+        1|zh|中文)
+            lang_choice="zh"
+            ;;
+        2|en|english|English)
+            lang_choice="en"
+            ;;
+        *)
+            echo "无效选项，请重新输入 / Invalid option, please try again"
+            ;;
+    esac
+done
+echo "$lang_choice" > "$LABPROXY_LANG_FILE"
+_okcat '✅' "语言设置已保存: ${lang_choice}"
+
 cp -rf "$SCRIPT_BASE_DIR" "$LABPROXY_HOME_DIR/"
 cp "$RESOURCES_BASE_DIR"/*.yaml "$LABPROXY_HOME_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.mmdb "$LABPROXY_HOME_DIR/" 2>/dev/null || true

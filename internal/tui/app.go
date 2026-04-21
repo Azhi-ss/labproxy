@@ -160,7 +160,7 @@ type settingItem struct {
 
 func newModel(client *proxy.Client, opts Options) model {
 	search := textinput.New()
-	search.Placeholder = "Search proxies or groups"
+	search.Placeholder = T().SearchPlaceholder
 	search.CharLimit = 64
 	search.Width = 28
 
@@ -175,21 +175,21 @@ func newModel(client *proxy.Client, opts Options) model {
 		height:             32,
 		search:             search,
 		help:               help.New(),
-		statusLine:         "connecting…",
+		statusLine:         T().StatusConnecting,
 		keys: keyMap{
-			Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move up")),
-			Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "move down")),
-			Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "focus left")),
-			Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "focus right")),
-			Tab:         key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch pane")),
-			Select:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply/select")),
-			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh delay")),
-			Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "settings")),
-			Mode:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "cycle mode")),
-			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle proxy pref")),
-			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close / back")),
-			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+			Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", T().HelpMoveUp)),
+			Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", T().HelpMoveDown)),
+			Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", T().HelpFocusLeft)),
+			Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", T().HelpFocusRight)),
+			Tab:         key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", T().HelpSwitchPane)),
+			Select:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", T().HelpApplySelect)),
+			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", T().HelpRefreshDelay)),
+			Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", T().HelpSearch)),
+			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", T().HelpSettings)),
+			Mode:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", T().HelpCycleMode)),
+			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", T().HelpToggleProxyPref)),
+			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
+			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
 		},
 	}
 }
@@ -211,7 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case refreshMsg:
 		m.applyState(msg)
 		if m.lastError == nil {
-			m.statusLine = "connected"
+			m.statusLine = T().StatusConnected
 		}
 		return m, nil
 	case statusMsg:
@@ -238,16 +238,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searchMode {
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-				m.searchMode = false
-				m.search.Blur()
-				m.rebuildGroups()
-				m.statusLine = "search cancelled"
-				return m, nil
-			case key.Matches(msg, m.keys.Select):
-				m.searchMode = false
-				m.search.Blur()
-				m.rebuildGroups()
-				m.statusLine = fmt.Sprintf("filter: %s", fallback(m.search.Value(), "none"))
+			m.searchMode = false
+			m.search.Blur()
+			m.rebuildGroups()
+			m.statusLine = T().SearchCancelled
+			return m, nil
+		case key.Matches(msg, m.keys.Select):
+			m.searchMode = false
+			m.search.Blur()
+			m.rebuildGroups()
+			m.statusLine = fmt.Sprintf("filter: %s", fallback(m.search.Value(), T().FilterNone))
 				return m, nil
 			default:
 				var cmd tea.Cmd
@@ -260,10 +260,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case m.settingsMode:
 			switch {
-			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-				m.settingsMode = false
-				m.statusLine = "settings closed"
-				return m, nil
+		case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
+			m.settingsMode = false
+			m.statusLine = T().SettingsClosed
+			return m, nil
 			case key.Matches(msg, m.keys.Up):
 				m.settingsIndex--
 				if m.settingsIndex < 0 {
@@ -287,11 +287,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Search):
 			m.searchMode = true
 			m.search.Focus()
-			m.statusLine = "type to filter groups or proxies"
+			m.statusLine = T().TypeToFilter
 			return m, nil
 		case key.Matches(msg, m.keys.Settings):
 			m.settingsMode = true
-			m.statusLine = "settings — enter apply · esc close"
+			m.statusLine = T().SettingsOpenHint
 			return m, nil
 		case key.Matches(msg, m.keys.Mode):
 			return m, m.cycleModeCmd()
@@ -318,7 +318,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.focus {
 			case focusGroups:
 				m.focus = focusOptions
-				m.statusLine = "focus: options"
+				m.statusLine = T().FocusOptions
 				return m, nil
 			default:
 				return m, m.switchProxyCmd()
@@ -331,7 +331,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.width <= 0 {
-		return "loading…"
+		return T().Loading
 	}
 
 	if m.settingsMode {
@@ -374,7 +374,11 @@ func (m *model) moveFocus(delta int) {
 	}
 	current = (current + delta + len(order)) % len(order)
 	m.focus = order[current]
-	m.statusLine = fmt.Sprintf("focus: %s", m.focusLabel())
+	if m.focus == focusGroups {
+		m.statusLine = T().FocusGroups
+	} else {
+		m.statusLine = T().FocusOptions
+	}
 }
 
 func (m *model) move(delta int) {
@@ -562,7 +566,7 @@ func (m model) switchProxyCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return switchResultMsg{
-			status: fmt.Sprintf("switched %s → %s", groupName, optionName),
+			status: fmt.Sprintf(T().SwitchedFmt, groupName, optionName),
 			data:   state,
 		}
 	}
@@ -585,7 +589,7 @@ func (m model) cycleModeCmd() tea.Cmd {
 			return errMsg{err}
 		}
 
-		status := fmt.Sprintf("mode → %s", fallback(state.config.Mode, next))
+		status := fmt.Sprintf(T().ModeToFmt, fallback(state.config.Mode, next))
 		switch {
 		case persistErr == nil && liveErr == nil:
 		case persistErr != nil && liveErr == nil:
@@ -611,7 +615,7 @@ func (m model) toggleSystemProxyCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return settingsResultMsg{
-			status: fmt.Sprintf("system proxy pref → %s (applies to new shells / next start)", boolLabel(next)),
+			status: fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
 			data:   state,
 		}
 	}
@@ -650,7 +654,7 @@ func (m model) toggleAllowLanCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return settingsResultMsg{
-			status: fmt.Sprintf("allow-lan pref → %s (saved, restart to apply)", boolLabel(next)),
+			status: fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
 			data:   state,
 		}
 	}
@@ -667,7 +671,7 @@ func (m model) toggleTunCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return settingsResultMsg{
-			status: fmt.Sprintf("tun pref → %s (saved, restart to apply)", boolLabel(next)),
+			status: fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
 			data:   state,
 		}
 	}
@@ -681,7 +685,7 @@ func (m model) restartRuntimeCmd() tea.Cmd {
 				return errMsg{err}
 			}
 			return settingsResultMsg{
-				status: "restart command unavailable; run labproxy restart in shell",
+				status: T().RestartUnavailable,
 				data:   state,
 			}
 		}
@@ -704,7 +708,7 @@ func (m model) restartRuntimeCmd() tea.Cmd {
 		if refreshErr != nil {
 			return errMsg{fmt.Errorf("restart succeeded but refresh failed: %w", refreshErr)}
 		}
-		return settingsResultMsg{status: "runtime restarted and settings reapplied", data: state}
+		return settingsResultMsg{status: T().RuntimeRestarted, data: state}
 	}
 }
 
@@ -813,21 +817,21 @@ func (m model) renderHeader() string {
 	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
 	titleRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		titleStyle.Render("LabProxy"),
+		titleStyle.Render(T().AppTitle),
 		"  ",
-		subtitleStyle.Render("press s for settings"),
+		subtitleStyle.Render(T().PressSForSettings),
 	)
 
 	metaRow := lipgloss.JoinHorizontal(
 		lipgloss.Left,
-		statusPill("endpoint", fallback(m.endpoint, "-")),
-		statusPill("mode", modeLabel(m.mode)),
-		statusPill("proxy", boolLabel(m.systemProxyEnabled)),
-		statusPill("lan", boolLabel(m.allowLanEnabled)),
-		statusPill("tun", boolLabel(m.tunEnabled)),
+		statusPill(T().PillEndpoint, fallback(m.endpoint, "-")),
+		statusPill(T().PillMode, modeLabel(m.mode)),
+		statusPill(T().PillProxy, boolLabel(m.systemProxyEnabled)),
+		statusPill(T().PillLan, boolLabel(m.allowLanEnabled)),
+		statusPill(T().PillTun, boolLabel(m.tunEnabled)),
 		statusPill("↑", formatBytes(m.up)),
 		statusPill("↓", formatBytes(m.down)),
-		statusPill("focus", m.focusLabel()),
+		statusPill(T().PillFocus, m.focusLabel()),
 	)
 
 	content := lipgloss.JoinVertical(
@@ -973,8 +977,8 @@ func (m model) renderGroupsPanel(width, height int) string {
 		style = activePanelStyle
 	}
 	content := renderPanelContent(
-		"Groups",
-		"Tab / ←→ to switch focus",
+		T().PanelGroups,
+		T().PanelGroupsHint,
 		m.visibleGroupRows(width, max(0, height)),
 		width,
 		height,
@@ -988,11 +992,11 @@ func (m model) renderOptionsPanel(width, height int) string {
 		style = activePanelStyle
 	}
 	group := m.currentGroup()
-	title := "Options"
-	subtitle := "Select a group first"
+	title := T().PanelOptions
+	subtitle := T().SelectGroupFirst
 	if group != nil {
-		title = fmt.Sprintf("Options · %s", group.Name)
-		subtitle = fmt.Sprintf("current %s", fallback(group.Current, "-"))
+		title = fmt.Sprintf(T().OptionsTitleFmt, group.Name)
+		subtitle = fmt.Sprintf(T().CurrentFmt, fallback(group.Current, "-"))
 	}
 	content := renderPanelContent(
 		title,
@@ -1015,8 +1019,8 @@ func (m model) renderSettingsOverlay() string {
 		Padding(1, 2).
 		Width(totalWidth)
 
-	title := titleStyle.Render("⚙ Settings")
-	subtitle := mutedStyle.Render("↑↓ move · enter apply · esc close")
+	title := titleStyle.Render(T().SettingsTitle)
+	subtitle := mutedStyle.Render(T().SettingsHint)
 
 	rows := m.visibleSettingRows(contentWidth, 5)
 	content := lipgloss.JoinVertical(
@@ -1034,9 +1038,9 @@ func (m model) renderSettingsOverlay() string {
 }
 
 func (m model) renderConnectionsPanel(width, height int) string {
-	subtitle := fmt.Sprintf("%d active · ↓ %s · ↑ %s", len(m.connections.Connections), formatSize(m.connections.DownloadTotal), formatSize(m.connections.UploadTotal))
+	subtitle := fmt.Sprintf(T().ConnectionStatsFmt, len(m.connections.Connections), formatSize(m.connections.DownloadTotal), formatSize(m.connections.UploadTotal))
 	content := renderPanelContent(
-		"Connections",
+		T().PanelConnections,
 		subtitle,
 		m.visibleConnectionRows(width, max(0, height)),
 		width,
@@ -1050,7 +1054,7 @@ func (m model) visibleGroupRows(width, limit int) []string {
 		return nil
 	}
 	if len(m.groups) == 0 {
-		return []string{fitLine(mutedStyle.Render("  No groups match the current filter."), width)}
+		return []string{fitLine(mutedStyle.Render("  "+T().NoGroupsMatchFilter), width)}
 	}
 	start, end := window(m.groupIndex, len(m.groups), limit)
 	rows := make([]string, 0, end-start)
@@ -1112,7 +1116,7 @@ func (m model) visibleOptionRows(width, limit int) []string {
 	}
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 {
-		return []string{fitLine(mutedStyle.Render("  No selectable nodes in this group."), width)}
+		return []string{fitLine(mutedStyle.Render("  "+T().NoSelectableNodes), width)}
 	}
 	start, end := window(m.optionIndex, len(group.Options), limit)
 	rows := make([]string, 0, end-start)
@@ -1165,16 +1169,16 @@ func (m model) visibleOptionRows(width, limit int) []string {
 }
 
 func (m model) settingsItems() []settingItem {
-	restartHint := "run labproxy restart in shell"
+	restartHint := T().HintRestartShell
 	if strings.TrimSpace(m.restartCommand) != "" {
-		restartHint = "apply saved mixin changes"
+		restartHint = T().HintRestartMixin
 	}
 	return []settingItem{
-		{Label: "Mode", Value: fallback(m.mode, "rule"), Hint: "cycle", Action: settingCycleMode},
-		{Label: "System Proxy", Value: boolLabel(m.systemProxyEnabled), Hint: "new shells", Action: settingToggleSystemProxy},
-		{Label: "Allow LAN", Value: boolLabel(m.allowLanEnabled), Hint: "restart", Action: settingToggleAllowLan},
-		{Label: "Tun", Value: boolLabel(m.tunEnabled), Hint: "restart", Action: settingToggleTun},
-		{Label: "Apply / Restart", Value: "", Hint: restartHint, Action: settingRestart},
+		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), Hint: T().HintCycle, Action: settingCycleMode},
+		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), Hint: T().HintNewShells, Action: settingToggleSystemProxy},
+		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), Hint: T().HintRestart, Action: settingToggleAllowLan},
+		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), Hint: T().HintRestart, Action: settingToggleTun},
+		{Label: T().SettingLabelRestart, Value: "", Hint: restartHint, Action: settingRestart},
 	}
 }
 
@@ -1184,7 +1188,7 @@ func (m model) visibleSettingRows(width, limit int) []string {
 	}
 	items := m.settingsItems()
 	if len(items) == 0 {
-		return []string{fitLine(mutedStyle.Render("  No settings available."), width)}
+		return []string{fitLine(mutedStyle.Render("  "+T().NoSettingsAvailable), width)}
 	}
 	start, end := window(m.settingsIndex, len(items), limit)
 	rows := make([]string, 0, end-start)
@@ -1209,14 +1213,14 @@ func (m model) visibleSettingRows(width, limit int) []string {
 			valueStyle = getModeStyle(valueStrPlain)
 		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
 			isOn := item.Value == boolLabel(true)
-			valueStrPlain = "off"
+			valueStrPlain = T().BoolOff
 			valueStyle = offStyle
 			if isOn {
-				valueStrPlain = "on"
+				valueStrPlain = T().BoolOn
 				valueStyle = onStyle
 			}
 		case settingRestart:
-			valueStrPlain = "↻ restart"
+			valueStrPlain = T().ValueRestart
 			valueStyle = lipgloss.NewStyle().Foreground(colorInfo).Bold(true)
 		default:
 			valueStrPlain = item.Value
@@ -1267,7 +1271,7 @@ func (m model) visibleConnectionRows(width, limit int) []string {
 	}
 	connections := m.connections.Connections
 	if len(connections) == 0 {
-		return []string{fitLine(mutedStyle.Render("  No active connections."), width)}
+		return []string{fitLine(mutedStyle.Render("  "+T().NoActiveConnections), width)}
 	}
 	if len(connections) > limit {
 		connections = connections[:limit]
@@ -1288,9 +1292,9 @@ func (m model) renderFooter() string {
 	}
 	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
 	helpView := fitLine(mutedStyle.Render(m.help.View(m.keys)), innerWidth)
-	left := statusStyle.Render(fallback(m.statusLine, "ready"))
+	left := statusStyle.Render(fallback(m.statusLine, T().StatusReady))
 	if m.searchMode {
-		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle.Render("Search:"), m.search.View())
+		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle.Render(T().SearchLabel), m.search.View())
 	}
 	row := lipgloss.JoinVertical(lipgloss.Left, fitLine(left, innerWidth), helpView)
 	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(row))
@@ -1335,8 +1339,8 @@ func renderPanel(style lipgloss.Style, width, height int, content string) string
 	return style.
 		Width(width).
 		Height(height).
-		MaxWidth(width + style.GetHorizontalFrameSize()).
-		MaxHeight(height + style.GetVerticalFrameSize()).
+		MaxWidth(width).
+		MaxHeight(height).
 		Render(content)
 }
 
@@ -1404,9 +1408,9 @@ func max(a, b int) int {
 
 func boolLabel(value bool) string {
 	if value {
-		return onStyle.Render("on")
+		return onStyle.Render(T().BoolOn)
 	}
-	return offStyle.Render("off")
+	return offStyle.Render(T().BoolOff)
 }
 
 func getModeStyle(mode string) lipgloss.Style {

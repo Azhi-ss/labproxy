@@ -17,6 +17,7 @@ func main() {
 		secret         = flag.String("secret", "", "mihomo controller secret")
 		mixinConfig    = flag.String("mixin-config", "", "path to mixin config for system-proxy status")
 		restartCommand = flag.String("restart-command", "", "shell command used to restart labproxy runtime")
+		lang           = flag.String("lang", "en", "ui language: en or zh")
 	)
 	flag.Parse()
 
@@ -37,6 +38,8 @@ func main() {
 		MixinConfigPath:    *mixinConfig,
 		RestartCommand:     *restartCommand,
 	})
+
+	tui.SetLanguage(tui.Language(*lang))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

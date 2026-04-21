@@ -484,18 +484,30 @@ function labproxytui() {
     local api_secret=$("$BIN_YQ" '.secret // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
     local restart_command="source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 
+    # 读取语言偏好
+    local lang_flag=""
+    if [ -f "$LABPROXY_LANG_FILE" ]; then
+        local lang_val
+        lang_val=$(head -n 1 "$LABPROXY_LANG_FILE" | tr -d '[:space:]')
+        if [ "$lang_val" = "zh" ] || [ "$lang_val" = "en" ]; then
+            lang_flag="--lang $lang_val"
+        fi
+    fi
+
     _okcat "正在连接 $endpoint ..."
     if _tui_supports_restart_command "$tui_bin"; then
         "$tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
             --mixin-config "$LABPROXY_CONFIG_MIXIN" \
-            --restart-command "$restart_command"
+            --restart-command "$restart_command" \
+            $lang_flag
     else
         "$tui_bin" \
             --endpoint "$endpoint" \
             --secret "$api_secret" \
-            --mixin-config "$LABPROXY_CONFIG_MIXIN"
+            --mixin-config "$LABPROXY_CONFIG_MIXIN" \
+            $lang_flag
     fi
 }
 
@@ -770,6 +782,27 @@ function labproxylan() {
     esac
 }
 
+function labproxylang() {
+    case "$1" in
+    zh|en)
+        echo "$1" > "$LABPROXY_LANG_FILE"
+        _okcat "语言已设置为: $1"
+        ;;
+    "")
+        if [ -f "$LABPROXY_LANG_FILE" ]; then
+            local current
+            current=$(head -n 1 "$LABPROXY_LANG_FILE" | tr -d '[:space:]')
+            _okcat "当前语言: ${current:-en}"
+        else
+            _okcat "当前语言: en (默认)"
+        fi
+        ;;
+    *)
+        _failcat "用法: labproxy lang [zh|en]"
+        ;;
+    esac
+}
+
 function labproxysubscribe() {
     case "$#" in
     0)
@@ -914,6 +947,10 @@ function labproxyctl() {
     tui)
         labproxytui
         ;;
+    lang)
+        shift
+        labproxylang "$@"
+        ;;
     *)
         cat <<EOF
 
@@ -942,6 +979,7 @@ Commands:
     secret   [SECRET]       Web 控制台密钥
     subscribe [URL]         设置或查看订阅地址
     update   [auto|log]     更新订阅配置
+    lang     [zh|en]        切换 TUI 界面语言
 
 说明:
     • 用户空间运行，无需 sudo 权限

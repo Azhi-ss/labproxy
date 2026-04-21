@@ -33,6 +33,7 @@ LABPROXY_CONFIG_RUNTIME="${LABPROXY_HOME_DIR}/runtime.yaml"
 LABPROXY_UPDATE_LOG="${LABPROXY_HOME_DIR}/labproxyctl.log"
 LABPROXY_TUI_SRC_DIR="${LABPROXY_HOME_DIR}/tui-src"
 LABPROXY_TUI_BIN="${LABPROXY_HOME_DIR}/bin/labproxy-tui"
+LABPROXY_LANG_FILE="${LABPROXY_HOME_DIR}/.lang"
 
 _is_dir_writable() {
     local dir=$1
