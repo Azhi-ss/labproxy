@@ -15,10 +15,10 @@ RESOURCES_CONFIG="${RESOURCES_BASE_DIR}/config.yaml"
 RESOURCES_CONFIG_MIXIN="${RESOURCES_BASE_DIR}/mixin.yaml"
 
 ZIP_BASE_DIR="${RESOURCES_BASE_DIR}/zip"
-ZIP_CLASH=$(echo ${ZIP_BASE_DIR}/clash*)
-ZIP_MIHOMO=$(echo ${ZIP_BASE_DIR}/mihomo*)
-ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
-ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
+ZIP_CLASH=$(echo "${ZIP_BASE_DIR}"/clash*)
+ZIP_MIHOMO=$(echo "${ZIP_BASE_DIR}"/mihomo*)
+ZIP_YQ=$(echo "${ZIP_BASE_DIR}"/yq*)
+ZIP_SUBCONVERTER=$(echo "${ZIP_BASE_DIR}"/subconverter*)
 ZIP_LABPROXY_TUI=""
 
 ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
@@ -536,7 +536,7 @@ _download_clash() {
     esac
 
     _okcat '⏳' "正在下载 Clash 内核（${arch} 架构）..."
-    local clash_zip="${ZIP_BASE_DIR}/$(basename $url)"
+    local clash_zip="${ZIP_BASE_DIR}/$(basename "$url")"
     curl \
         --progress-bar \
         --show-error \
