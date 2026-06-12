@@ -342,11 +342,11 @@ func TestUpdate_KeyMsg_SystemProxy(t *testing.T) {
 	}
 
 	result := cmd()
-	settingsMsg, ok := result.(settingsResultMsg)
+	configMsg, ok := result.(configFlagsMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg, got %T", result)
+		t.Fatalf("expected configFlagsMsg, got %T", result)
 	}
-	if !settingsMsg.data.systemProxyEnabled {
+	if !configMsg.systemProxyEnabled {
 		t.Fatal("expected system proxy to be enabled")
 	}
 
@@ -367,21 +367,21 @@ func TestActivateSettingCmd_AllowLanAndTun(t *testing.T) {
 
 	m.settingsIndex = 2 // Allow LAN
 	result := m.activateSettingCmd()()
-	allowLanMsg, ok := result.(settingsResultMsg)
+	allowLanMsg, ok := result.(configFlagsMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg for allow-lan, got %T", result)
+		t.Fatalf("expected configFlagsMsg for allow-lan, got %T", result)
 	}
-	if !allowLanMsg.data.allowLanEnabled {
+	if !allowLanMsg.allowLanEnabled {
 		t.Fatal("expected allow-lan to be enabled")
 	}
 
 	m.settingsIndex = 3 // Tun
 	result = m.activateSettingCmd()()
-	tunMsg, ok := result.(settingsResultMsg)
+	tunMsg, ok := result.(configFlagsMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg for tun, got %T", result)
+		t.Fatalf("expected configFlagsMsg for tun, got %T", result)
 	}
-	if !tunMsg.data.tunEnabled {
+	if !tunMsg.tunEnabled {
 		t.Fatal("expected tun to be enabled")
 	}
 }

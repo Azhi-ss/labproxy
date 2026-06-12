@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	appconfig "labproxy/internal/config"
@@ -94,6 +95,16 @@ type statusMsg struct{ text string }
 
 type errMsg struct{ err error }
 
+// configFlagsMsg carries only config-related boolean flags,
+// used by toggle-system-proxy / allow-lan / tun to avoid
+// overwriting traffic / proxy / connection state with stale snapshots.
+type configFlagsMsg struct {
+	status             string
+	systemProxyEnabled bool
+	allowLanEnabled    bool
+	tunEnabled         bool
+}
+
 type switchResultMsg struct {
 	status string
 	data   refreshMsg
@@ -152,10 +163,11 @@ const (
 )
 
 type settingItem struct {
-	Label  string
-	Value  string
-	Hint   string
-	Action settingAction
+	Label    string
+	Value    string // styled display value for UI rendering
+	RawValue bool   // plain bool for data comparison (toggle items only)
+	Hint     string
+	Action   settingAction
 }
 
 func newModel(client *proxy.Client, opts Options) model {
@@ -232,6 +244,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.lastError = msg.err
 		m.statusLine = msg.err.Error()
+		m.settingsMode = false
+		return m, nil
+	case configFlagsMsg:
+		m.systemProxyEnabled = msg.systemProxyEnabled
+		m.allowLanEnabled = msg.allowLanEnabled
+		m.tunEnabled = msg.tunEnabled
+		m.statusLine = msg.status
+		m.lastError = nil
 		m.settingsMode = false
 		return m, nil
 	case tea.KeyMsg:
@@ -535,9 +555,22 @@ func (m model) delayRefreshCmd() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		defer cancel()
 
+		// Concurrent delay testing: fire up to 4 goroutines at once so
+		// many nodes don't exhaust the 12s context timeout sequentially.
+		const concurrency = 4
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+
 		for _, optionName := range optionNames {
-			_, _ = m.client.Delay(ctx, optionName, 5*time.Second)
+			wg.Add(1)
+			go func(name string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				_, _ = m.client.Delay(ctx, name, 5*time.Second)
+			}(optionName)
 		}
+		wg.Wait()
 
 		state, err := m.fetchState(ctx)
 		if err != nil {
@@ -610,13 +643,15 @@ func (m model) toggleSystemProxyCmd() tea.Cmd {
 		if err := appconfig.WriteSystemProxyEnabled(m.mixinConfigPath, next); err != nil {
 			return errMsg{err}
 		}
-		state, err := m.refreshSettingsOnly()
+		sysEnabled, err := appconfig.ReadSystemProxyEnabled(m.mixinConfigPath)
 		if err != nil {
 			return errMsg{err}
 		}
-		return settingsResultMsg{
-			status: fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
-			data:   state,
+		return configFlagsMsg{
+			status:             fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
+			systemProxyEnabled: sysEnabled,
+			allowLanEnabled:    m.allowLanEnabled,
+			tunEnabled:         m.tunEnabled,
 		}
 	}
 }
@@ -649,13 +684,15 @@ func (m model) toggleAllowLanCmd() tea.Cmd {
 		if err := appconfig.WriteAllowLanEnabled(m.mixinConfigPath, next); err != nil {
 			return errMsg{err}
 		}
-		state, err := m.refreshSettingsOnly()
+		lanEnabled, err := appconfig.ReadAllowLanEnabled(m.mixinConfigPath)
 		if err != nil {
 			return errMsg{err}
 		}
-		return settingsResultMsg{
-			status: fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
-			data:   state,
+		return configFlagsMsg{
+			status:             fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
+			systemProxyEnabled: m.systemProxyEnabled,
+			allowLanEnabled:    lanEnabled,
+			tunEnabled:         m.tunEnabled,
 		}
 	}
 }
@@ -666,13 +703,15 @@ func (m model) toggleTunCmd() tea.Cmd {
 		if err := appconfig.WriteTunEnabled(m.mixinConfigPath, next); err != nil {
 			return errMsg{err}
 		}
-		state, err := m.refreshSettingsOnly()
+		tunEnabled, err := appconfig.ReadTunEnabled(m.mixinConfigPath)
 		if err != nil {
 			return errMsg{err}
 		}
-		return settingsResultMsg{
-			status: fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
-			data:   state,
+		return configFlagsMsg{
+			status:             fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
+			systemProxyEnabled: m.systemProxyEnabled,
+			allowLanEnabled:    m.allowLanEnabled,
+			tunEnabled:         tunEnabled,
 		}
 	}
 }
@@ -1174,11 +1213,11 @@ func (m model) settingsItems() []settingItem {
 		restartHint = T().HintRestartMixin
 	}
 	return []settingItem{
-		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), Hint: T().HintCycle, Action: settingCycleMode},
-		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), Hint: T().HintNewShells, Action: settingToggleSystemProxy},
-		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), Hint: T().HintRestart, Action: settingToggleAllowLan},
-		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), Hint: T().HintRestart, Action: settingToggleTun},
-		{Label: T().SettingLabelRestart, Value: "", Hint: restartHint, Action: settingRestart},
+		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), RawValue: false, Hint: T().HintCycle, Action: settingCycleMode},
+		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), RawValue: m.systemProxyEnabled, Hint: T().HintNewShells, Action: settingToggleSystemProxy},
+		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), RawValue: m.allowLanEnabled, Hint: T().HintRestart, Action: settingToggleAllowLan},
+		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), RawValue: m.tunEnabled, Hint: T().HintRestart, Action: settingToggleTun},
+		{Label: T().SettingLabelRestart, Value: "", RawValue: false, Hint: restartHint, Action: settingRestart},
 	}
 }
 
@@ -1212,7 +1251,7 @@ func (m model) visibleSettingRows(width, limit int) []string {
 			valueStrPlain = strings.ToLower(strings.TrimSpace(item.Value))
 			valueStyle = getModeStyle(valueStrPlain)
 		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
-			isOn := item.Value == boolLabel(true)
+			isOn := item.RawValue
 			valueStrPlain = T().BoolOff
 			valueStyle = offStyle
 			if isOn {

@@ -190,6 +190,80 @@ _rc_managed_line_fish_path() {
     printf 'set -gx PATH %s/.labproxy/bin $PATH' "$HOME"
 }
 
+# fish-compatible watch_proxy equivalent: auto-inject proxy env vars
+# when opening a new interactive fish shell.
+# NOTE: bash variables ($HOME, $LABPROXY_HOME) are expanded at generation time
+# by bash; fish variables ($LABPROXY_HOME etc.) are expanded at fish runtime.
+_rc_managed_line_fish_watch_proxy() {
+    cat <<'FISH_EOF'
+
+function _labproxy_watch_proxy
+    status is-interactive; or return 0
+
+    set -l mixin_config "$LABPROXY_HOME/mixin.yaml"
+    test -f "$mixin_config"; or return 0
+
+    set -l system_proxy_status (yq '.system-proxy.enable // true' "$mixin_config" 2>/dev/null)
+    test "$system_proxy_status" = "true"; or return 0
+
+    # Check if labproxy process is running
+    set -l pid_file "$LABPROXY_HOME/config/labproxy.pid"
+    test -f "$pid_file"; or return 0
+    set -l pid (cat "$pid_file" 2>/dev/null)
+    test -n "$pid"; or return 0
+    kill -0 "$pid" 2>/dev/null; or return 0
+
+    # Read proxy port from state file
+    set -l port_state "$LABPROXY_HOME/config/ports.conf"
+    test -f "$port_state"; or return 0
+    set -l proxy_port (grep "^PROXY_PORT=" "$port_state" | cut -d'=' -f2)
+    test -n "$proxy_port"; or set proxy_port 7890
+
+    # Read auth from runtime config
+    set -l runtime_config "$LABPROXY_HOME/runtime.yaml"
+    set -l auth (yq '.authentication[0] // ""' "$runtime_config" 2>/dev/null)
+    test -n "$auth"; and set auth "$auth@"
+
+    set -l http_proxy_addr "http://$auth""127.0.0.1:$proxy_port"
+    set -l socks_proxy_addr "socks5h://$auth""127.0.0.1:$proxy_port"
+
+    if not set -q http_proxy; or test -z "$http_proxy"
+        # No existing proxy, set labproxy proxy
+        set -gx http_proxy $http_proxy_addr
+        set -gx https_proxy $http_proxy_addr
+        set -gx HTTP_PROXY $http_proxy_addr
+        set -gx HTTPS_PROXY $http_proxy_addr
+        set -gx all_proxy $socks_proxy_addr
+        set -gx ALL_PROXY $socks_proxy_addr
+        set -gx no_proxy "localhost,127.0.0.1,::1"
+        set -gx NO_PROXY "localhost,127.0.0.1,::1"
+    else if _labproxy_wsl_auto_proxy
+        # WSL mirrored autoProxy detected, override with labproxy
+        set -gx http_proxy $http_proxy_addr
+        set -gx https_proxy $http_proxy_addr
+        set -gx HTTP_PROXY $http_proxy_addr
+        set -gx HTTPS_PROXY $http_proxy_addr
+        set -gx all_proxy $socks_proxy_addr
+        set -gx ALL_PROXY $socks_proxy_addr
+    end
+    # else: http_proxy already set by user, do not override
+end
+
+function _labproxy_wsl_auto_proxy
+    test -n "$http_proxy"; or return 1
+    test -f /proc/version; or return 1
+    grep -qi microsoft /proc/version 2>/dev/null; or return 1
+    for wslconfig in /mnt/c/Users/*/.wslconfig
+        test -f "$wslconfig"; or continue
+        grep -qi 'autoProxy.*true' "$wslconfig" 2>/dev/null; and return 0
+    end
+    return 1
+end
+
+_labproxy_watch_proxy
+FISH_EOF
+}
+
 _rc_block_begin() {
     printf '%s\n' '# >>> labproxy >>>'
 }
@@ -264,7 +338,13 @@ _write_rc_block_fish() {
         ' "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
 
     [ -s "$rc_file" ] && printf '\n' >> "$rc_file"
-    printf '%s\n%s\n%s\n%s\n' "$begin_marker" "$managed_line_home" "$managed_line_path" "$end_marker" >> "$rc_file"
+    {
+        printf '%s\n' "$begin_marker"
+        printf '%s\n' "$managed_line_home"
+        printf '%s\n' "$managed_line_path"
+        _rc_managed_line_fish_watch_proxy
+        printf '%s\n' "$end_marker"
+    } >> "$rc_file"
 }
 
 _remove_rc_block() {
@@ -310,6 +390,8 @@ _remove_rc_block_fish() {
     managed_line_home=$(_rc_managed_line_fish)
     managed_line_path=$(_rc_managed_line_fish_path)
 
+    # Strip the entire labproxy block (between markers) and any
+    # standalone managed lines that may have been written outside the block.
     awk \
         -v begin_marker="$begin_marker" \
         -v end_marker="$end_marker" \

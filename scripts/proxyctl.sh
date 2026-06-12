@@ -81,7 +81,7 @@ _verify_actual_ports() {
     [ -z "$actual_proxy_port" ] && actual_proxy_port=$(grep "HTTP proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     
     local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*:\([0-9]\+\)[^0-9]*$/\1/p')
-    local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+    local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*:\([0-9]\+\)[^0-9]*$/\1/p')
     
     # 从配置文件获取期望端口进行比较
     local config_proxy_port=$("$BIN_YQ" '.mixed-port // 7890' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
@@ -471,7 +471,7 @@ function labproxytui() {
 
     # 获取实际端口
     _verify_actual_ports
-    _get_ui_port
+    [ -z "${UI_PORT:-}" ] && _get_ui_port
 
     # 检查端口可用性
     if ! _is_bind "$UI_PORT" 2>/dev/null; then
