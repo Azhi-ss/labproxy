@@ -92,3 +92,15 @@ func TestStore_MoveRule(t *testing.T) {
 		t.Errorf("unexpected after move: %+v", rules)
 	}
 }
+
+func TestStore_ResetRules(t *testing.T) {
+	s := newTestStore(t, "rules:\n  - DOMAIN,a.com,DIRECT\n  - DOMAIN,b.com,DIRECT\n")
+	_, err := s.ResetRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := s.LoadRules()
+	if len(rules) != 0 {
+		t.Errorf("expected empty after reset, got %d", len(rules))
+	}
+}

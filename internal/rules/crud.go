@@ -99,3 +99,16 @@ func (s *Store) MoveRule(from, to int) (Diff, error) {
 	}
 	return Diff{Modified: []Rule{moved}}, nil
 }
+
+func (s *Store) ResetRules() (Diff, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old, err := s.loadRules()
+	if err != nil {
+		return Diff{}, err
+	}
+	if err := s.saveRules(nil); err != nil {
+		return Diff{}, err
+	}
+	return Diff{Removed: old}, nil
+}
