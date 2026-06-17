@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	"labproxy/internal/rules"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // View identifies a screen inside the rules modal.
@@ -83,4 +85,44 @@ func viewName(v View) string {
 	default:
 		return "menu"
 	}
+}
+
+// Update handles a key message. Returns true if the key was consumed.
+//   - esc / R: from Menu → close; from a sub-view → back to Menu
+//   - 1: rule list
+//   - 2: rule providers
+//   - 3: import rules
+//   - 4: reset rules to default (best-effort)
+//
+// Any other key is consumed (returns true) so the modal keeps focus.
+func (m *Modal) Update(msg tea.KeyMsg) bool {
+	if !m.IsOpen() {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch msg.String() {
+	case "esc", "R":
+		if m.view == ViewMenu {
+			m.open = false
+		} else {
+			m.view = ViewMenu
+		}
+		return true
+	case "1":
+		m.view = ViewList
+		return true
+	case "2":
+		m.view = ViewProviders
+		return true
+	case "3":
+		m.view = ViewImport
+		return true
+	case "4":
+		if m.store != nil {
+			_, _ = m.store.ResetRules()
+		}
+		return true
+	}
+	return true
 }
