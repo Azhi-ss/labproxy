@@ -47,12 +47,12 @@
 
 ### Phase 1：agent-native 结构化输出（差异化最高）
 
-- [ ] **T1.1** 定义统一 JSON envelope 与 `--json` 全局解析
+- [x] **T1.1** 定义统一 JSON envelope 与 `--json` 全局解析
   - 新建 `internal/cli/output.go`：`Envelope{OK bool, Data any, Error string}`，`PrintJSON(env)`、`IsJSONFlag(args)`。
   - 入口识别 `--json`。
   - 验收：`go test` 覆盖 envelope 序列化、`--json` 解析（含 `--json` 出现在任意位置）。
   - 文件：`internal/cli/output.go`、`internal/cli/output_test.go`
-  - commit: -
+  - commit: see below (本任务)
 
 - [ ] **T1.2** `status --json` 输出结构化运行状态
   - 字段：`running bool, pid int, proxy_port, ui_port, dns_port, mode, system_proxy bool, uptime`。
