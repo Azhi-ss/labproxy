@@ -59,10 +59,10 @@
   - 验收：人读输出不变；`--json` 输出合法 JSON 且字段齐全。
   - commit: 本任务（status 子命令 + bash 转发）
 
-- [ ] **T1.3** `proxies --json` / `connections --json` / `delay --json` 输出
+- [x] **T1.3** `proxies --json` / `connections --json` / `delay --json` 输出
   - 新增 `labproxy proxies`、`labproxy connections`、`labproxy delay <name>` CLI（薄封装 client）。
   - 验收：每个命令 `--json` 与无 flag 双形态；表驱动测试。
-  - commit: -
+  - commit: 本任务（proxy_cli.go + main/proxyctl 接线）
 
 ### Phase 2：连接管理（断连）
 

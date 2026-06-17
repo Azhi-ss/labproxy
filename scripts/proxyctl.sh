@@ -1376,6 +1376,7 @@ function labproxydoctor() {
 }
 
 function labproxyctl() {
+    local _cmd="$1"
     case "$1" in
     on)
         labproxyon
@@ -1462,6 +1463,16 @@ function labproxyctl() {
         shift
         exec "$LABPROXY_TUI_BIN" rules --mixin-config "$LABPROXY_CONFIG_MIXIN" "$@"
         ;;
+    proxies|connections|delay)
+        shift
+        _get_ui_port 2>/dev/null || true
+        local _proxy_endpoint=""
+        [ -n "${UI_PORT:-}" ] && _proxy_endpoint="http://127.0.0.1:${UI_PORT}"
+        exec "$LABPROXY_TUI_BIN" "$_cmd" \
+            ${_proxy_endpoint:+--endpoint "$_proxy_endpoint"} \
+            ${SECRET:+--secret "$SECRET"} \
+            "$@"
+        ;;
     lang)
         shift
         labproxylang "$@"
@@ -1487,8 +1498,11 @@ Commands:
     on                      开启代理
     off                     关闭代理
     restart                 重启代理服务
-    status                  进程运行状态
+    status                  进程运行状态 [--json]
     tui                     交互式终端界面（TUI）
+    proxies                 列出代理分组与节点 [--json]
+    connections             列出当前连接 [--json]
+    delay     <name>        测节点延迟 [--json]
     ui                      Web 控制台地址
     proxy    [on|off|status]       系统代理环境变量
     port     [status|auto|set]     代理端口模式设置

@@ -31,6 +31,28 @@ func main() {
 		os.Exit(runStatusCLI(os.Stdout, os.Stderr, os.Args[2:], home, *endpoint, *secret))
 	}
 
+	if len(os.Args) >= 2 && (os.Args[1] == "proxies" || os.Args[1] == "connections" || os.Args[1] == "delay") {
+		sub := os.Args[1]
+		args := os.Args[2:]
+		// flag.Parse 遇子命令名停止，此处从 args 显式提取 --endpoint/--secret
+		args, ep := extractStringFlag(args, "--endpoint")
+		args, sec := extractStringFlag(args, "--secret")
+		if ep == "" {
+			ep = *endpoint
+		}
+		if sec == "" {
+			sec = *secret
+		}
+		switch sub {
+		case "proxies":
+			os.Exit(runProxiesCLI(os.Stdout, os.Stderr, args, ep, sec))
+		case "connections":
+			os.Exit(runConnectionsCLI(os.Stdout, os.Stderr, args, ep, sec))
+		case "delay":
+			os.Exit(runDelayCLI(os.Stdout, os.Stderr, args, ep, sec))
+		}
+	}
+
 	if *endpoint == "" {
 		fmt.Fprintln(os.Stderr, "missing required --endpoint")
 		os.Exit(1)
