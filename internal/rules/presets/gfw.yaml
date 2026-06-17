@@ -1,0 +1,5 @@
+# preset: gfw
+# description: GFW list via proxy
+- DOMAIN-SUFFIX,google.com,PROXY
+- DOMAIN-SUFFIX,github.com,PROXY
+- DOMAIN-SUFFIX,youtube.com,PROXY

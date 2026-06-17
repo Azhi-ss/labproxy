@@ -1,0 +1,6 @@
+# preset: direct
+# description: Common CN domains direct
+- DOMAIN-SUFFIX,cn,DIRECT
+- DOMAIN-KEYWORD,baidu,DIRECT
+- DOMAIN-KEYWORD,taobao,DIRECT
+- GEOIP,CN,DIRECT
