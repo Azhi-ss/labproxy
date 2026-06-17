@@ -58,6 +58,7 @@ type paneFocus int
 const (
 	focusGroups paneFocus = iota
 	focusOptions
+	focusConnections
 )
 
 type keyMap struct {
@@ -147,6 +148,9 @@ type model struct {
 	optionIndex   int
 	settingsIndex int
 	settingsMode  bool
+
+	connIndex        int    // 连接面板选中行
+	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
 
 	width  int
 	height int
@@ -300,6 +304,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// 连接面板断连快捷键：仅当焦点在连接面板时生效。
+		// d → 关闭当前选中连接（首次进入待确认，再次确认）；D → 关闭全部（同理）。
+		if m.focus == focusConnections {
+			if handled, mm, mcmd := m.handleConnectionCloseKey(msg); handled {
+				return mm, mcmd
+			}
+		}
+
 		switch {
 		case m.settingsMode:
 			switch {
@@ -412,7 +424,7 @@ func (m *model) toggleFocus() {
 }
 
 func (m *model) moveFocus(delta int) {
-	order := []paneFocus{focusGroups, focusOptions}
+	order := []paneFocus{focusGroups, focusOptions, focusConnections}
 	current := 0
 	for idx, focus := range order {
 		if m.focus == focus {
@@ -422,10 +434,13 @@ func (m *model) moveFocus(delta int) {
 	}
 	current = (current + delta + len(order)) % len(order)
 	m.focus = order[current]
-	if m.focus == focusGroups {
+	switch m.focus {
+	case focusGroups:
 		m.statusLine = T().FocusGroups
-	} else {
+	case focusOptions:
 		m.statusLine = T().FocusOptions
+	case focusConnections:
+		m.statusLine = T().FocusConnections
 	}
 }
 
@@ -441,8 +456,29 @@ func (m *model) move(delta int) {
 			return
 		}
 		m.optionIndex += delta
+	case focusConnections:
+		if len(m.connections.Connections) == 0 {
+			return
+		}
+		m.connIndex += delta
+		m.clampConnIndex()
 	}
 	m.clampIndices()
+}
+
+// clampConnIndex 限制连接选中行在有效范围。
+func (m *model) clampConnIndex() {
+	n := len(m.connections.Connections)
+	if n == 0 {
+		m.connIndex = 0
+		return
+	}
+	if m.connIndex < 0 {
+		m.connIndex = 0
+	}
+	if m.connIndex >= n {
+		m.connIndex = n - 1
+	}
 }
 
 func (m *model) rebuildGroups() {
@@ -628,6 +664,83 @@ func (m model) switchProxyCmd() tea.Cmd {
 		}
 		return switchResultMsg{
 			status: fmt.Sprintf(T().SwitchedFmt, groupName, optionName),
+			data:   state,
+		}
+	}
+}
+
+// handleConnectionCloseKey 处理连接面板的 d/D 断连按键。
+// 返回 (handled, model, cmd)；handled=false 表示未处理，交回主 Update。
+// 交互：按 d/D 设待确认态并提示，再次按相同键确认执行，其它键取消。
+func (m model) handleConnectionCloseKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
+	if msg.Type != tea.KeyRunes {
+		return false, m, nil
+	}
+	runes := string(msg.Runes)
+	isClose := runes == "d"
+	isCloseAll := runes == "D"
+
+	// 已有待确认态
+	if m.connConfirmClose != "" {
+		// 再次按对应键确认
+		confirmMatch := (m.connConfirmClose == "all" && isCloseAll) ||
+			(m.connConfirmClose != "all" && isClose)
+		if confirmMatch {
+			target := m.connConfirmClose
+			m.connConfirmClose = ""
+			return true, m, m.closeConnectionCmd(target)
+		}
+		// 其它任意键取消
+		m.connConfirmClose = ""
+		m.statusLine = T().FocusConnections
+		return true, m, nil
+	}
+
+	// 首次按 d/D 进入待确认
+	if isCloseAll {
+		m.connConfirmClose = "all"
+		m.statusLine = T().ConnCloseAllLabel + " — press D again to confirm"
+		return true, m, nil
+	}
+	if isClose {
+		conns := m.connections.Connections
+		if len(conns) == 0 {
+			return true, m, nil
+		}
+		m.clampConnIndex()
+		target := conns[m.connIndex].ID
+		m.connConfirmClose = target
+		m.statusLine = target + " — press d again to confirm"
+		return true, m, nil
+	}
+	return false, m, nil
+}
+
+func (m model) closeConnectionCmd(target string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+
+		var closeErr error
+		if target == "all" {
+			closeErr = m.client.CloseAllConnections(ctx)
+		} else {
+			closeErr = m.client.CloseConnection(ctx, target)
+		}
+		if closeErr != nil {
+			return errMsg{fmt.Errorf("close connection %s: %w", target, closeErr)}
+		}
+
+		state, err := m.fetchState(ctx)
+		if err != nil {
+			return errMsg{err}
+		}
+		label := target
+		if target == "all" {
+			label = T().ConnCloseAllLabel
+		}
+		return switchResultMsg{
+			status: fmt.Sprintf(T().ConnClosedFmt, label),
 			data:   state,
 		}
 	}

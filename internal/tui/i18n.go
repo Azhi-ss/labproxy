@@ -69,7 +69,10 @@ type Dict struct {
 	FocusGroups       string
 	FocusGroupsLabel  string
 	FocusOptionsLabel string
+	FocusConnections  string
 	FilterLabelFmt    string
+	ConnCloseAllLabel string
+	ConnClosedFmt     string
 
 	// Operation results
 	SwitchedFmt           string
@@ -170,7 +173,10 @@ var dicts = map[Language]Dict{
 		FocusGroups:       "focus: groups",
 		FocusGroupsLabel:  "groups",
 		FocusOptionsLabel: "options",
+		FocusConnections:  "focus: connections · d close · D close all",
 		FilterLabelFmt:    "filter: %s",
+		ConnCloseAllLabel: "all",
+		ConnClosedFmt:     "closed connection: %s",
 
 		SwitchedFmt:           "switched %s \u2192 %s",
 		ModeToFmt:             "mode \u2192 %s",
@@ -263,6 +269,9 @@ var dicts = map[Language]Dict{
 		FocusGroups:       "\u7126\u70b9: \u4ee3\u7406\u7ec4",
 		FocusGroupsLabel:  "\u4ee3\u7406\u7ec4",
 		FocusOptionsLabel: "\u5019\u9009\u8282\u70b9",
+		FocusConnections:  "\u7126\u70b9: \u8fde\u63a5 \u00b7 d \u5173\u95ed \u00b7 D \u5168\u90e8\u5173\u95ed",
+		ConnCloseAllLabel: "\u5168\u90e8",
+		ConnClosedFmt:     "\u5df2\u5173\u95ed\u8fde\u63a5: %s",
 		FilterLabelFmt:    "\u8fc7\u6ee4: %s",
 
 		SwitchedFmt:           "\u5df2\u5207\u6362 %s \u2192 %s",

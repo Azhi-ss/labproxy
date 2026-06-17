@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,14 +255,24 @@ func TestUpdate_KeyMsg_LeftRight(t *testing.T) {
 		t.Fatalf("expected focus to be options after right key, got %d", newM.focus)
 	}
 
-	// Right key again should wrap back to groups (two-column layout)
+	// Right key again moves to connections (three-pane focus cycle)
+	newModel, cmd = newModel.Update(msgRight)
+	if cmd != nil {
+		t.Fatal("expected nil command for right key")
+	}
+	newM = newModel.(model)
+	if newM.focus != focusConnections {
+		t.Fatalf("expected focus to be connections after second right key, got %d", newM.focus)
+	}
+
+	// Right key again wraps back to groups
 	newModel, cmd = newModel.Update(msgRight)
 	if cmd != nil {
 		t.Fatal("expected nil command for right key wrap")
 	}
 	newM = newModel.(model)
 	if newM.focus != focusGroups {
-		t.Fatalf("expected focus to wrap to groups after second right key, got %d", newM.focus)
+		t.Fatalf("expected focus to wrap to groups after third right key, got %d", newM.focus)
 	}
 }
 
@@ -642,6 +654,12 @@ func TestToggleFocus(t *testing.T) {
 	}
 	if m.statusLine != "focus: options" {
 		t.Fatalf("expected status line 'focus: options', got %q", m.statusLine)
+	}
+
+	// 三焦点循环：groups → options → connections → groups
+	m.toggleFocus()
+	if m.focus != focusConnections {
+		t.Fatalf("expected focus to be connections, got %d", m.focus)
 	}
 
 	m.toggleFocus()
@@ -1406,5 +1424,150 @@ func TestGroupPanelWidthRespectsMax(t *testing.T) {
 	maxAllowed := columnContentWidth - 30
 	if m.groupPanelWidth > maxAllowed {
 		t.Errorf("groupPanelWidth should be capped at %d, got %d", maxAllowed, m.groupPanelWidth)
+	}
+}
+
+func TestUpdate_CloseConnectionKeyDown(t *testing.T) {
+	var delPath, delMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			delPath = r.URL.Path
+			delMethod = r.Method
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// GET 端点返回最小有效响应
+		switch r.URL.Path {
+		case "/version":
+			fmt.Fprint(w, `{"version":"test","meta":true}`)
+		case "/configs":
+			fmt.Fprint(w, `{"mode":"rule","mixed-port":7890}`)
+		case "/proxies":
+			fmt.Fprint(w, `{"proxies":{}}`)
+		case "/connections":
+			fmt.Fprint(w, `{"downloadTotal":0,"uploadTotal":0,"connections":[]}`)
+		case "/traffic":
+			fmt.Fprint(w, `{"up":0,"down":0}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+
+	client := proxy.NewClient(srv.URL, "")
+	m := newModel(client, Options{Endpoint: srv.URL})
+	m.focus = focusConnections
+	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
+	m.connIndex = 0
+
+	// 第一次按 d：进入待确认
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	um := updated.(model)
+	if um.connConfirmClose != "conn-1" {
+		t.Fatalf("expected connConfirmClose=conn-1 after first d, got %q", um.connConfirmClose)
+	}
+
+	// 第二次按 d（确认）：应触发 close 命令
+	updated2, cmd := um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	um2 := updated2.(model)
+	if cmd == nil {
+		t.Fatal("expected cmd to be returned on confirm")
+	}
+	// 执行命令验证 client 调用
+	msg := cmd()
+	_ = msg
+	if delMethod != http.MethodDelete {
+		t.Errorf("expected DELETE, got %s (path=%s)", delMethod, delPath)
+	}
+	if delPath != "/connections/conn-1" {
+		t.Errorf("expected /connections/conn-1, got %s", delPath)
+	}
+	if um2.connConfirmClose != "" {
+		t.Errorf("confirm should clear pending state, got %q", um2.connConfirmClose)
+	}
+}
+
+func TestUpdate_CloseAllConnectionsKey(t *testing.T) {
+	var delPath, delMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			delPath = r.URL.Path
+			delMethod = r.Method
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		switch r.URL.Path {
+		case "/version":
+			fmt.Fprint(w, `{"version":"test","meta":true}`)
+		case "/configs":
+			fmt.Fprint(w, `{"mode":"rule","mixed-port":7890}`)
+		case "/proxies":
+			fmt.Fprint(w, `{"proxies":{}}`)
+		case "/connections":
+			fmt.Fprint(w, `{"downloadTotal":0,"uploadTotal":0,"connections":[]}`)
+		case "/traffic":
+			fmt.Fprint(w, `{"up":0,"down":0}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+
+	client := proxy.NewClient(srv.URL, "")
+	m := newModel(client, Options{Endpoint: srv.URL})
+	m.focus = focusConnections
+	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
+
+	// 按 D（大写）关闭全部：进入待确认 all
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	um := updated.(model)
+	if um.connConfirmClose != "all" {
+		t.Fatalf("expected connConfirmClose=all after D, got %q", um.connConfirmClose)
+	}
+
+	// 确认
+	_, cmd := um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if cmd == nil {
+		t.Fatal("expected cmd on confirm")
+	}
+	cmd()
+	if delMethod != http.MethodDelete {
+		t.Errorf("expected DELETE, got %s", delMethod)
+	}
+	if delPath != "/connections" {
+		t.Errorf("expected /connections (all), got %s", delPath)
+	}
+}
+
+func TestUpdate_CloseConnectionCancel(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.focus = focusConnections
+	m.connConfirmClose = "conn-1"
+
+	// 按非确认键应取消
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	um := updated.(model)
+	if um.connConfirmClose != "" {
+		t.Errorf("expected confirm cleared on cancel, got %q", um.connConfirmClose)
+	}
+}
+
+func TestUpdate_CloseConnectionOnlyWhenFocused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("client should not be called when connections not focused")
+	}))
+	defer srv.Close()
+
+	client := proxy.NewClient(srv.URL, "")
+	m := newModel(client, Options{Endpoint: srv.URL})
+	m.focus = focusGroups // 非连接焦点
+	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
+
+	// d 键在非连接焦点不应触发断连
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	um := updated.(model)
+	if um.connConfirmClose != "" {
+		t.Errorf("should not enter confirm when not focused on connections: %q", um.connConfirmClose)
 	}
 }

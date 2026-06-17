@@ -75,10 +75,10 @@
   - 验收：`close all`、`close <id>` 双路径；`--json` 返回操作结果；错误明确。
   - commit: 本任务（proxy_cli.go connections close 子动作）
 
-- [ ] **T2.3** TUI 连接视图支持断连快捷键
+- [x] **T2.3** TUI 连接视图支持断连快捷键
   - 连接列表项可选中，`d` 关闭当前、`D` 关闭全部，带确认。
   - 验收：TUI 测试覆盖按键 → 触发 client 调用（mock）。
-  - commit: -
+  - commit: 本任务（app.go 焦点循环+断连快捷键+i18n）
 
 ### Phase 3：批量测速
 
