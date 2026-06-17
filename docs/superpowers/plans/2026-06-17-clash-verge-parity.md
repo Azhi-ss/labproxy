@@ -66,10 +66,10 @@
 
 ### Phase 2：连接管理（断连）
 
-- [ ] **T2.1** client 新增 `CloseConnection(id)` 与 `CloseAllConnections()`
+- [x] **T2.1** client 新增 `CloseConnection(id)` 与 `CloseAllConnections()`
   - 对应 mihomo `DELETE /connections/:id`、`DELETE /connections`。
   - 验收：`client_test.go` 用 httptest mock 验证方法、URL、状态码。
-  - commit: -
+  - commit: 本任务（client.go CloseConnection/CloseAllConnections）
 
 - [ ] **T2.2** CLI `labproxy connections close <id|all>`
   - 验收：`close all`、`close <id>` 双路径；`--json` 返回操作结果；错误明确。

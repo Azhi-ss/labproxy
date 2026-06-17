@@ -165,6 +165,60 @@ func (c *Client) UpdateMode(ctx context.Context, mode string) error {
 	return nil
 }
 
+// CloseConnection 关闭指定连接。对应 mihomo DELETE /connections/:id。
+// id 为空时直接返回错误，避免误删全部连接。
+func (c *Client) CloseConnection(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("close connection failed: empty connection id")
+	}
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint.Path = path.Join(endpoint.Path, "/connections", id)
+
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("close connection failed: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// CloseAllConnections 关闭所有连接。对应 mihomo DELETE /connections。
+func (c *Client) CloseAllConnections(ctx context.Context) error {
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint.Path = path.Join(endpoint.Path, "/connections")
+
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("close all connections failed: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 	req, err := c.newRequest(ctx, http.MethodGet, c.baseURL+endpoint, nil)
 	if err != nil {

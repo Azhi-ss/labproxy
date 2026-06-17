@@ -493,3 +493,98 @@ func TestNetworkError(t *testing.T) {
 		t.Fatal("expected error for network failure")
 	}
 }
+
+func TestCloseConnection(t *testing.T) {
+	var gotPath, gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	if err := client.CloseConnection(ctx, "conn-abc-123"); err != nil {
+		t.Fatalf("CloseConnection() error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method=%s want DELETE", gotMethod)
+	}
+	if gotPath != "/connections/conn-abc-123" {
+		t.Errorf("path=%s want /connections/conn-abc-123", gotPath)
+	}
+}
+
+func TestCloseConnection_ErrorResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("connection not found"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	err := client.CloseConnection(ctx, "nope")
+	if err == nil {
+		t.Fatal("expected error for failed close request")
+	}
+	if !strings.Contains(err.Error(), "close connection failed") {
+		t.Fatalf("error should mention 'close connection failed', got %q", err.Error())
+	}
+}
+
+func TestCloseConnection_EmptyID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("server should not be called for empty id")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	if err := client.CloseConnection(ctx, ""); err == nil {
+		t.Fatal("expected error for empty connection id")
+	}
+}
+
+func TestCloseAllConnections(t *testing.T) {
+	var gotPath, gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	ctx := context.Background()
+
+	if err := client.CloseAllConnections(ctx); err != nil {
+		t.Fatalf("CloseAllConnections() error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method=%s want DELETE", gotMethod)
+	}
+	if gotPath != "/connections" {
+		t.Errorf("path=%s want /connections", gotPath)
+	}
+}
+
+func TestCloseAllConnections_WithSecret(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer s3cret" {
+			t.Fatalf("missing secret, got %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "s3cret")
+	ctx := context.Background()
+	if err := client.CloseAllConnections(ctx); err != nil {
+		t.Fatalf("CloseAllConnections() error: %v", err)
+	}
+}
