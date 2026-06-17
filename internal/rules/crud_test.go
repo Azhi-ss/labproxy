@@ -63,3 +63,32 @@ func TestStore_UpdateRule(t *testing.T) {
 		t.Errorf("update failed: %+v", rules[0])
 	}
 }
+
+func TestStore_ToggleRule(t *testing.T) {
+	s := newTestStore(t, "rules:\n  - DOMAIN,a.com,DIRECT\n")
+	if _, err := s.ToggleRule(0); err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := s.LoadRules()
+	if rules[0].Enabled {
+		t.Error("rule should be disabled after toggle")
+	}
+	if _, err := s.ToggleRule(0); err != nil {
+		t.Fatal(err)
+	}
+	rules, _ = s.LoadRules()
+	if !rules[0].Enabled {
+		t.Error("rule should be re-enabled after second toggle")
+	}
+}
+
+func TestStore_MoveRule(t *testing.T) {
+	s := newTestStore(t, "rules:\n  - DOMAIN,a.com,DIRECT\n  - DOMAIN,b.com,DIRECT\n  - DOMAIN,c.com,DIRECT\n")
+	if _, err := s.MoveRule(0, 2); err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := s.LoadRules()
+	if rules[0].Payload != "b.com" || rules[2].Payload != "a.com" {
+		t.Errorf("unexpected after move: %+v", rules)
+	}
+}

@@ -57,3 +57,45 @@ func (s *Store) DeleteRule(index int) (Diff, error) {
 	}
 	return Diff{Removed: []Rule{removed}}, nil
 }
+
+func (s *Store) ToggleRule(index int) (Diff, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rules, err := s.loadRules()
+	if err != nil {
+		return Diff{}, err
+	}
+	if index < 0 || index >= len(rules) {
+		return Diff{}, fmt.Errorf("index %d out of range", index)
+	}
+	rules[index].Enabled = !rules[index].Enabled
+	if err := s.saveRules(rules); err != nil {
+		return Diff{}, err
+	}
+	return Diff{Modified: []Rule{rules[index]}}, nil
+}
+
+func (s *Store) MoveRule(from, to int) (Diff, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rules, err := s.loadRules()
+	if err != nil {
+		return Diff{}, err
+	}
+	if from < 0 || from >= len(rules) {
+		return Diff{}, fmt.Errorf("from index %d out of range", from)
+	}
+	if to < 0 || to >= len(rules) {
+		return Diff{}, fmt.Errorf("to index %d out of range", to)
+	}
+	if from == to {
+		return Diff{}, nil
+	}
+	moved := rules[from]
+	rules = append(rules[:from], rules[from+1:]...)
+	rules = append(rules[:to], append([]Rule{moved}, rules[to:]...)...)
+	if err := s.saveRules(rules); err != nil {
+		return Diff{}, err
+	}
+	return Diff{Modified: []Rule{moved}}, nil
+}
