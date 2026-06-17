@@ -242,3 +242,136 @@ func runDelayCLI(stdout, stderr io.Writer, args []string, endpoint, secret strin
 	fmt.Fprintf(stdout, "%s: %d ms\n", name, delay)
 	return 0
 }
+
+// groupProxyTypes 是 mihomo 中可作为"代理组"的类型。
+var groupProxyTypes = map[string]bool{
+	"Selector":     true,
+	"URLTest":      true,
+	"Fallback":     true,
+	"LoadBalance":  true,
+	"Relay":        true,
+}
+
+// isGroupProxy 判断是否为代理组（含多个候选节点）。
+func isGroupProxy(p proxy.Proxy) bool {
+	return groupProxyTypes[p.Type] && len(p.All) > 0
+}
+
+// runTestCLI 实现 `labproxy-tui test [group]`：批量测速并按延迟排序。
+// 不指定 group 时默认测 GLOBAL，无 GLOBAL 则取第一个组。
+func runTestCLI(stdout, stderr io.Writer, args []string, endpoint, secret string) int {
+	jsonOut := cli.IsJSONFlag(args)
+	if endpoint == "" {
+		fmt.Fprintln(stderr, "error: --endpoint is required")
+		return 2
+	}
+
+	// 取首个非 flag 参数作为组名
+	groupName := ""
+	for _, a := range args {
+		if a == "--json" || strings.HasPrefix(a, "--json=") {
+			continue
+		}
+		if a == "" {
+			continue
+		}
+		groupName = a
+		break
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client := proxy.NewClient(endpoint, secret)
+	resp, err := client.Proxies(ctx)
+	if err != nil {
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: err.Error()})
+			return 1
+		}
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	// 选组：指定名 → GLOBAL → 第一个组
+	var group proxy.Proxy
+	found := false
+	if groupName != "" {
+		if g, ok := resp.Proxies[groupName]; ok && isGroupProxy(g) {
+			group, found = g, true
+		}
+	} else {
+		if g, ok := resp.Proxies["GLOBAL"]; ok && isGroupProxy(g) {
+			group, found = g, true
+		} else {
+			for _, p := range resp.Proxies {
+				if isGroupProxy(p) {
+					group, found = p, true
+					break
+				}
+			}
+		}
+	}
+
+	if !found {
+		msg := fmt.Sprintf("group not found: %s", fallbackName(groupName))
+		if groupName == "" {
+			msg = "no proxy group available"
+		}
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: msg})
+		} else {
+			fmt.Fprintf(stderr, "error: %s\n", msg)
+		}
+		return 1
+	}
+
+	results, err := client.DelayGroup(ctx, group, 5*time.Second)
+	if err != nil {
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: err.Error()})
+			return 1
+		}
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	if jsonOut {
+		_ = cli.PrintJSON(stdout, cli.Envelope{OK: true, Data: map[string]any{
+			"group":   group.Name,
+			"results": results,
+		}})
+		return 0
+	}
+
+	// 人读：按延迟升序排序，-1（失败）排末尾
+	type item struct {
+		name  string
+		delay int
+	}
+	items := make([]item, 0, len(results))
+	for n, d := range results {
+		items = append(items, item{n, d})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if (items[i].delay == -1) != (items[j].delay == -1) {
+			return items[j].delay == -1 // 失败排后
+		}
+		return items[i].delay < items[j].delay
+	})
+	fmt.Fprintf(stdout, "组: %s\n", group.Name)
+	for _, it := range items {
+		if it.delay == -1 {
+			fmt.Fprintf(stdout, "  %-30s timeout\n", it.name)
+		} else {
+			fmt.Fprintf(stdout, "  %-30s %d ms\n", it.name, it.delay)
+		}
+	}
+	return 0
+}
+
+func fallbackName(s string) string {
+	if s == "" {
+		return "<empty>"
+	}
+	return s
+}

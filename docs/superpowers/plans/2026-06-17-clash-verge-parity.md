@@ -87,10 +87,10 @@
   - 验收：并发安全测试（`-race`）、超时处理、部分失败不阻断。
   - commit: 本任务（client.go DelayGroup 并发测全组）
 
-- [ ] **T3.2** CLI `labproxy test [group]` 批量测速
+- [x] **T3.2** CLI `labproxy test [group]` 批量测速
   - 默认测当前组，输出按延迟排序表格；`--json` 输出 map。
   - 验收：表格 + JSON 双形态；空组/失败组优雅处理。
-  - commit: -
+  - commit: 本任务（proxy_cli.go runTestCLI + main/proxyctl 接线）
 
 - [ ] **T3.3** TUI 分组视图批量测速
   - `T` 测当前组全部节点，延迟列实时刷新，超时显示 `timeout`。

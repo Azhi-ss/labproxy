@@ -31,7 +31,7 @@ func main() {
 		os.Exit(runStatusCLI(os.Stdout, os.Stderr, os.Args[2:], home, *endpoint, *secret))
 	}
 
-	if len(os.Args) >= 2 && (os.Args[1] == "proxies" || os.Args[1] == "connections" || os.Args[1] == "delay") {
+	if len(os.Args) >= 2 && (os.Args[1] == "proxies" || os.Args[1] == "connections" || os.Args[1] == "delay" || os.Args[1] == "test") {
 		sub := os.Args[1]
 		args := os.Args[2:]
 		// flag.Parse 遇子命令名停止，此处从 args 显式提取 --endpoint/--secret
@@ -50,6 +50,8 @@ func main() {
 			os.Exit(runConnectionsCLI(os.Stdout, os.Stderr, args, ep, sec))
 		case "delay":
 			os.Exit(runDelayCLI(os.Stdout, os.Stderr, args, ep, sec))
+		case "test":
+			os.Exit(runTestCLI(os.Stdout, os.Stderr, args, ep, sec))
 		}
 	}
 

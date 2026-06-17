@@ -272,3 +272,147 @@ func TestRunConnectionsCLI_CloseHuman(t *testing.T) {
 		t.Errorf("human output should mention conn-1: %s", out.String())
 	}
 }
+
+func TestRunTestCLI_JSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/proxies" && r.Method == http.MethodGet:
+			fmt.Fprint(w, `{"proxies":{"GLOBAL":{"name":"GLOBAL","type":"Selector","all":["Node-A","Node-B","Node-C"]},"Node-A":{"name":"Node-A","type":"Shadowsocks"},"Node-B":{"name":"Node-B","type":"Shadowsocks"},"Node-C":{"name":"Node-C","type":"Shadowsocks"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			parts := strings.Split(r.URL.Path, "/")
+			name := parts[2]
+			delay := 0
+			switch name {
+			case "Node-A":
+				delay = 120
+			case "Node-B":
+				delay = 50
+			case "Node-C":
+				http.Error(w, "timeout", http.StatusGatewayTimeout)
+				return
+			}
+			fmt.Fprintf(w, `{"delay":%d}`, delay)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runTestCLI(&out, &out, []string{"GLOBAL", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Group   string         `json:"group"`
+			Results map[string]int `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Data.Group != "GLOBAL" {
+		t.Errorf("result wrong: %+v", env)
+	}
+	if env.Data.Results["Node-A"] != 120 || env.Data.Results["Node-B"] != 50 {
+		t.Errorf("delays wrong: %+v", env.Data.Results)
+	}
+	if env.Data.Results["Node-C"] != -1 {
+		t.Errorf("Node-C should be -1, got %d", env.Data.Results["Node-C"])
+	}
+}
+
+func TestRunTestCLI_HumanSorted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/proxies":
+			fmt.Fprint(w, `{"proxies":{"GLOBAL":{"name":"GLOBAL","type":"Selector","all":["Node-A","Node-B"]},"Node-A":{"name":"Node-A","type":"Shadowsocks"},"Node-B":{"name":"Node-B","type":"Shadowsocks"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			parts := strings.Split(r.URL.Path, "/")
+			name := parts[2]
+			delay := 0
+			if name == "Node-A" {
+				delay = 200
+			} else {
+				delay = 30
+			}
+			fmt.Fprintf(w, `{"delay":%d}`, delay)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runTestCLI(&out, &out, []string{"GLOBAL"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	s := out.String()
+	// Node-B (30ms) 应排在 Node-A (200ms) 之前（按延迟升序）
+	idxB := strings.Index(s, "Node-B")
+	idxA := strings.Index(s, "Node-A")
+	if idxB < 0 || idxA < 0 {
+		t.Fatalf("output missing nodes: %s", s)
+	}
+	if idxB > idxA {
+		t.Errorf("expected Node-B (lower delay) before Node-A: %s", s)
+	}
+}
+
+func TestRunTestCLI_GroupNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"proxies":{"GLOBAL":{"name":"GLOBAL","type":"Selector","all":["A"]}}}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runTestCLI(&out, &out, []string{"NoExist", "--json"}, srv.URL, "")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for missing group")
+	}
+	var env struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if env.OK {
+		t.Errorf("should be ok=false")
+	}
+}
+
+func TestRunTestCLI_DefaultGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/proxies":
+			fmt.Fprint(w, `{"proxies":{"GLOBAL":{"name":"GLOBAL","type":"Selector","all":["A"]},"A":{"name":"A","type":"Shadowsocks"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			fmt.Fprint(w, `{"delay":10}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	// 不指定组名，应默认取 GLOBAL
+	code := runTestCLI(&out, &out, []string{"--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	var env struct {
+		Data struct {
+			Group string `json:"group"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if env.Data.Group != "GLOBAL" {
+		t.Errorf("default group should be GLOBAL, got %q", env.Data.Group)
+	}
+}
