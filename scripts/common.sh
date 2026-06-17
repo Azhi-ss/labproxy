@@ -7,6 +7,383 @@
 URL_GH_PROXY='https://ghfast.top'
 URL_LABPROXY_UI="http://board.zash.run.place"
 
+# ---- Download robustness (mirror pool + cache + cooldown) ----
+
+# GitHub mirror pool - ordered by preference
+_github_mirror_pool() {
+    cat <<'EOF'
+ghfast|https://ghfast.top|hostpath
+gh-proxy|https://gh-proxy.org|full
+ghproxy-net|https://ghproxy.net|hostpath
+kkgithub|https://kkgithub.com|hostpath
+EOF
+}
+
+# Cache directory for downloaded assets
+_download_cache_dir() {
+    echo "${LABPROXY_HOME_DIR}/cache/assets"
+}
+
+# Cooldown in seconds before retrying a failed mirror
+_download_fail_cooldown() {
+    echo "1800"
+}
+
+# State file for mirror success/failure tracking
+_download_mirror_state_file() {
+    echo "${LABPROXY_HOME_DIR}/cache/download-mirrors.env"
+}
+
+# Check if a URL is a GitHub URL that can be mirrored
+_github_url_is_mirrorable() {
+    case "$1" in
+        https://github.com/*|https://raw.githubusercontent.com/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Extract host from URL
+_github_url_host() {
+    local url="$1"
+    local no_scheme="${url#https://}"
+    no_scheme="${no_scheme#http://}"
+    echo "${no_scheme%%/*}"
+}
+
+# Extract path from URL
+_github_url_path() {
+    local url="$1"
+    local no_scheme="${url#https://}"
+    no_scheme="${no_scheme#http://}"
+    echo "${no_scheme#*/}"
+}
+
+# Build a mirror URL from a mirror entry and original URL
+_build_github_mirror_url() {
+    local entry="$1"
+    local url="$2"
+    local label prefix mode host path
+
+    IFS='|' read -r label prefix mode <<EOF
+$entry
+EOF
+
+    case "${mode:-full}" in
+        full)
+            echo "${prefix%/}/${url}"
+            ;;
+        hostpath)
+            host="$(_github_url_host "$url")"
+            path="$(_github_url_path "$url")"
+            echo "${prefix%/}/${host}/${path}"
+            ;;
+        origin)
+            echo "$url"
+            ;;
+        *)
+            echo "${prefix%/}/${url}"
+            ;;
+    esac
+}
+
+# Get all mirror candidates for a URL, ordered by score
+_github_mirror_candidates_ordered() {
+    local url="$1"
+    local entry label score
+
+    # Always include origin first
+    echo "origin||origin"
+
+    if ! _github_url_is_mirrorable "$url"; then
+        return 0
+    fi
+
+    while IFS= read -r entry; do
+        [ -n "${entry:-}" ] || continue
+        label="${entry%%|*}"
+        # Skip mirrors with recent active failure
+        _download_mirror_recent_failure_active "$label" && continue
+        printf '%s\n' "$entry"
+    done <<EOF
+$(_github_mirror_pool)
+EOF
+}
+
+# Mirror state key normalization
+_download_mirror_state_key() {
+    local label="$1"
+    printf '%s' "$label" | tr '[:lower:]-./:' '[:upper:]_____'
+}
+
+# Read a field from mirror state
+_read_download_mirror_state() {
+    local label="$1"
+    local field="$2"
+    local file key
+
+    file="$(_download_mirror_state_file)"
+    [ -f "$file" ] || return 1
+
+    key="DOWNLOAD_MIRROR_$(_download_mirror_state_key "$label")_${field}"
+    sed -nE "s/^[[:space:]]*${key}=['\"]?([^'\"]*)['\"]?$/\1/p" "$file" | head -n 1
+}
+
+# Write a field to mirror state
+_write_download_mirror_state() {
+    local label="$1"
+    local field="$2"
+    local value="$3"
+    local file key
+
+    file="$(_download_mirror_state_file)"
+    mkdir -p "$(dirname "$file")"
+    touch "$file"
+
+    key="DOWNLOAD_MIRROR_$(_download_mirror_state_key "$label")_${field}"
+
+    if grep -qE "^[[:space:]]*${key}=" "$file"; then
+        awk -v k="$key" -v v="$value" '
+            $0 ~ "^[[:space:]]*" k "=" {
+                print k "=\"" v "\""
+                next
+            }
+            { print }
+        ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+    else
+        printf '%s="%s"\n' "$key" "$value" >> "$file"
+    fi
+}
+
+# Record a successful download through a mirror
+_record_download_mirror_success() {
+    local label="$1"
+    local candidate_url="${2:-}"
+    local now
+    now=$(date +%s)
+
+    _write_download_mirror_state "$label" "LAST_SUCCESS_AT" "$now"
+    _write_download_mirror_state "$label" "LAST_SUCCESS_URL" "$candidate_url"
+    _write_download_mirror_state "$label" "FAIL_STREAK" "0"
+}
+
+# Record a failed download through a mirror
+_record_download_mirror_failure() {
+    local label="$1"
+    local candidate_url="${2:-}"
+    local now fail_streak
+
+    now=$(date +%s)
+    fail_streak="$(_read_download_mirror_state "$label" "FAIL_STREAK" 2>/dev/null || echo "0")"
+
+    case "$fail_streak" in
+        ''|*[!0-9]*) fail_streak="0" ;;
+    esac
+
+    fail_streak=$((fail_streak + 1))
+
+    _write_download_mirror_state "$label" "LAST_FAILURE_AT" "$now"
+    _write_download_mirror_state "$label" "LAST_FAILURE_URL" "$candidate_url"
+    _write_download_mirror_state "$label" "FAIL_STREAK" "$fail_streak"
+}
+
+# Check if a mirror has a recent failure still in cooldown
+_download_mirror_recent_failure_active() {
+    local label="$1"
+    local fail_at success_at now cooldown delta
+
+    [ "$label" = "origin" ] && return 1  # origin never has cooldown
+
+    fail_at="$(_read_download_mirror_state "$label" "LAST_FAILURE_AT" 2>/dev/null || true)"
+    success_at="$(_read_download_mirror_state "$label" "LAST_SUCCESS_AT" 2>/dev/null || true)"
+    cooldown="$(_download_fail_cooldown)"
+    now=$(date +%s)
+
+    case "$fail_at" in ''|*[!0-9]*) return 1 ;; esac
+    case "$success_at" in ''|*[!0-9]*) success_at=0 ;; esac
+    case "$cooldown" in ''|*[!0-9]*) cooldown=1800 ;; esac
+
+    [ "$fail_at" -gt "$success_at" ] || return 1
+    delta=$((now - fail_at))
+    [ "$delta" -lt "$cooldown" ]
+}
+
+# Download cache key (SHA256 hash of URL)
+_download_cache_key() {
+    local url="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$url" | sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$url" | shasum -a 256 | awk '{print $1}'
+    else
+        printf '%s' "$url" | cksum | awk '{print $1 "-" $2}'
+    fi
+}
+
+# Cache file path for a URL
+_download_cache_file() {
+    local url="$1"
+    echo "$(_download_cache_dir)/$(_download_cache_key "$url").bin"
+}
+
+# Restore a file from download cache
+_download_cache_restore() {
+    local url="$1"
+    local out="$2"
+    local cache_file
+
+    cache_file="$(_download_cache_file "$url")"
+    [ -s "$cache_file" ] || return 1
+
+    mkdir -p "$(dirname "$out")"
+    cp -f "$cache_file" "$out"
+    _okcat "📦" "使用缓存：${url}"
+    return 0
+}
+
+# Store a file in download cache
+_download_cache_store() {
+    local url="$1"
+    local src="$2"
+    local source_url="${3:-}"
+
+    [ -s "$src" ] || return 0
+
+    local cache_file="$(_download_cache_file "$url")"
+    local meta_file="${cache_file}.meta"
+
+    mkdir -p "$(_download_cache_dir)"
+    cp -f "$src" "$cache_file"
+
+    cat > "$meta_file" <<EOF
+CACHE_URL="$url"
+CACHE_SOURCE_URL="$source_url"
+CACHE_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+EOF
+}
+
+# Clear all download cache
+_clear_download_cache() {
+    rm -rf "$(_download_cache_dir)" 2>/dev/null || true
+}
+
+# Core download function with mirror pool, cache, and cooldown
+# Usage: _download_file <url> <out> [asset_name]
+_download_file() {
+    local url="$1"
+    local out="$2"
+    local asset_name="${3:-$(basename "$url")}"
+
+    mkdir -p "$(dirname "$out")"
+    rm -f "$out" 2>/dev/null || true
+
+    # Try cache first
+    if _download_cache_restore "$url" "$out"; then
+        return 0
+    fi
+
+    local fetch_tmp
+    fetch_tmp=$(mktemp 2>/dev/null) || fetch_tmp="${out}.tmp.$$"
+    rm -f "$fetch_tmp" 2>/dev/null || true
+
+    local entry label candidate_url tried_urls=""
+    local probe_ok=false
+
+    # Phase 1: probe mirrors to find working ones
+    _okcat '⏳' "正在查找可用镜像：${asset_name}"
+    while IFS= read -r entry; do
+        [ -n "${entry:-}" ] || continue
+
+        candidate_url="$(_build_github_mirror_url "$entry" "$url")"
+        [ -n "${candidate_url:-}" ] || continue
+
+        printf '%s\n' "$tried_urls" | grep -Fxq "$candidate_url" && continue
+        label="${entry%%|*}"
+
+        if _download_mirror_recent_failure_active "$label"; then
+            continue
+        fi
+
+        # Probe
+        if curl -fsSIL --location --connect-timeout 4 --max-time 4 "$candidate_url" >/dev/null 2>&1; then
+            probe_ok=true
+            break
+        fi
+    done <<EOF
+$(_github_mirror_candidates_ordered "$url")
+EOF
+
+    # Phase 2: fetch from the first working mirror
+    if [ "$probe_ok" = true ]; then
+        _okcat '⏳' "正在下载：${asset_name} [${label}]"
+        if curl \
+            --progress-bar \
+            --show-error \
+            --fail \
+            --location \
+            --connect-timeout 8 \
+            --max-time 1200 \
+            --retry 1 \
+            --output "$fetch_tmp" \
+            "$candidate_url"; then
+            mv -f "$fetch_tmp" "$out"
+            _download_cache_store "$url" "$out" "$candidate_url"
+            _record_download_mirror_success "$label" "$candidate_url"
+            return 0
+        fi
+        _record_download_mirror_failure "$label" "$candidate_url"
+        rm -f "$fetch_tmp" 2>/dev/null || true
+    fi
+
+    # Phase 3: blind fallback - try all mirrors without probing
+    _okcat '⏳' "镜像探测未通过，尝试盲连..."
+    while IFS= read -r entry; do
+        [ -n "${entry:-}" ] || continue
+
+        candidate_url="$(_build_github_mirror_url "$entry" "$url")"
+        [ -n "${candidate_url:-}" ] || continue
+
+        printf '%s\n' "$tried_urls" | grep -Fxq "$candidate_url" && continue
+        label="${entry%%|*}"
+
+        if _download_mirror_recent_failure_active "$label"; then
+            continue
+        fi
+
+        fetch_tmp=$(mktemp 2>/dev/null) || fetch_tmp="${out}.tmp.$$"
+        rm -f "$fetch_tmp" 2>/dev/null || true
+
+        _okcat '⏳' "正在下载：${asset_name} [${label}]"
+        if curl \
+            --progress-bar \
+            --show-error \
+            --fail \
+            --location \
+            --connect-timeout 8 \
+            --max-time 1200 \
+            --retry 1 \
+            --output "$fetch_tmp" \
+            "$candidate_url"; then
+            mv -f "$fetch_tmp" "$out"
+            _download_cache_store "$url" "$out" "$candidate_url"
+            _record_download_mirror_success "$label" "$candidate_url"
+            return 0
+        fi
+
+        _record_download_mirror_failure "$label" "$candidate_url"
+        rm -f "$fetch_tmp" 2>/dev/null || true
+        tried_urls="${tried_urls}${candidate_url}"$'\n'
+    done <<EOF
+$(_github_mirror_candidates_ordered "$url")
+EOF
+
+    rm -f "$fetch_tmp" 2>/dev/null || true
+    return 1
+}
+
 SCRIPT_BASE_DIR='./scripts'
 
 RESOURCES_BASE_DIR='./resources'
@@ -34,6 +411,8 @@ LABPROXY_UPDATE_LOG="${LABPROXY_HOME_DIR}/labproxyctl.log"
 LABPROXY_TUI_SRC_DIR="${LABPROXY_HOME_DIR}/tui-src"
 LABPROXY_TUI_BIN="${LABPROXY_HOME_DIR}/bin/labproxy-tui"
 LABPROXY_LANG_FILE="${LABPROXY_HOME_DIR}/.lang"
+LABPROXY_SUBS_FILE="${LABPROXY_HOME_DIR}/config/subscriptions.yaml"
+LABPROXY_SUBS_CONFIG_DIR="${LABPROXY_HOME_DIR}/config/subscriptions"
 
 _is_dir_writable() {
     local dir=$1
@@ -709,17 +1088,26 @@ _download_clash() {
 
     _okcat '⏳' "正在下载 Clash 内核（${arch} 架构）..."
     local clash_zip="${ZIP_BASE_DIR}/$(basename "$url")"
-    curl \
-        --progress-bar \
-        --show-error \
-        --fail \
-        --insecure \
-        --connect-timeout 15 \
-        --retry 1 \
-        --output "$clash_zip" \
-        "$url"
+
+    # Use mirror pool for GitHub-hosted URLs
+    if _github_url_is_mirrorable "$url"; then
+        _download_file "$url" "$clash_zip" "clash-${arch}" || \
+            _error_quit "下载失败，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
+    else
+        curl \
+            --progress-bar \
+            --show-error \
+            --fail \
+            --insecure \
+            --connect-timeout 15 \
+            --retry 1 \
+            --output "$clash_zip" \
+            "$url" || \
+            _error_quit "下载失败，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
+    fi
+
     echo $sha256sum "$clash_zip" | sha256sum -c ||
-        _error_quit "下载失败，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
+        _error_quit "下载文件校验失败，请自行下载对应版本至 ${ZIP_BASE_DIR} 目录下：https://downloads.clash.wiki/ClashPremium/"
 }
 
 _download_raw_config() {
@@ -731,8 +1119,22 @@ _download_raw_config() {
 
     _cleanup_tmp() { rm -f "$tmp"; }
 
-    # 订阅地址常见 302 跳转；同时需要对 4xx/5xx 做失败处理，避免写入 HTML/错误页导致后续解析失败。
-    # 优先直连（历史行为），失败后再尝试走当前环境代理（mihomo 开启后可用）。
+    # Try cache first
+    if _download_cache_restore "$url" "$dest"; then
+        return 0
+    fi
+
+    # If it's a GitHub URL, use mirror pool
+    if _github_url_is_mirrorable "$url"; then
+        if _download_file "$url" "$tmp" "subscription"; then
+            mv -f "$tmp" "$dest"
+            return 0
+        fi
+        _cleanup_tmp
+        return 1
+    fi
+
+    # Non-GitHub URL: direct + proxy fallback
     if curl \
         --silent \
         --show-error \
@@ -749,6 +1151,7 @@ _download_raw_config() {
         --output "$tmp" \
         "$url"; then
         mv -f "$tmp" "$dest"
+        _download_cache_store "$url" "$dest" "$url"
         return 0
     fi
 
@@ -767,6 +1170,7 @@ _download_raw_config() {
         --output "$tmp" \
         "$url"; then
         mv -f "$tmp" "$dest"
+        _download_cache_store "$url" "$dest" "$url"
         return 0
     fi
 
@@ -931,6 +1335,69 @@ _start_convert() {
 }
 _stop_convert() {
     pkill -9 -f "$BIN_SUBCONVERTER" >&/dev/null || true
+}
+
+# ---- Multi-subscription management ----
+
+# Ensure subscriptions YAML file exists
+_ensure_subs_file() {
+    if [ ! -f "$LABPROXY_SUBS_FILE" ]; then
+        mkdir -p "$(dirname "$LABPROXY_SUBS_FILE")"
+        cat > "$LABPROXY_SUBS_FILE" <<'EOF'
+# LabProxy subscriptions
+# active: name of the currently active subscription
+active: ""
+subscriptions: {}
+EOF
+    fi
+}
+
+# Get the active subscription name
+_active_subscription_name() {
+    _ensure_subs_file
+    "$BIN_YQ" '.active // ""' "$LABPROXY_SUBS_FILE" 2>/dev/null
+}
+
+# Get the active subscription URL
+_active_subscription_url() {
+    local name
+    name="$(_active_subscription_name)"
+    [ -z "$name" ] && return 1
+    "$BIN_YQ" ".subscriptions[\"$name\"].url // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null
+}
+
+# Get config file path for a subscription
+_sub_config_file() {
+    local name="$1"
+    echo "${LABPROXY_SUBS_CONFIG_DIR}/${name}.yaml"
+}
+
+# Set the active subscription
+_set_active_subscription() {
+    local name="$1"
+    _ensure_subs_file
+    "$BIN_YQ" -i ".active = \"$name\"" "$LABPROXY_SUBS_FILE" 2>/dev/null
+}
+
+# Apply the active subscription's config to raw config
+_apply_active_subscription() {
+    local name
+    name="$(_active_subscription_name)"
+    [ -z "$name" ] && return 1
+
+    local sub_config="$(_sub_config_file "$name")"
+    [ -f "$sub_config" ] || return 1
+
+    cp "$sub_config" "$LABPROXY_CONFIG_RAW"
+    return 0
+}
+
+# Save subscription config to its file
+_save_sub_config() {
+    local name="$1"
+    local config_file="$2"
+    mkdir -p "$LABPROXY_SUBS_CONFIG_DIR"
+    cp "$config_file" "$(_sub_config_file "$name")"
 }
 
 # User-space process management functions

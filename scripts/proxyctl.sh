@@ -822,17 +822,17 @@ function labproxysubscribe() {
             _failcat "无效的订阅地址，必须以 http 或 https 开头"
             return 1
         fi
-        
+
         # Save URL
         _save_subscription_url "$new_url"
         _okcat "订阅地址已设置：${new_url}"
-        
+
         # Ask if user wants to update immediately
         printf "是否立即更新订阅配置? [y/N]: "
         read -r response
         case "$response" in
         [yY]|[yY][eE][sS])
-            labproxyupdate "$new_url"
+            labproxysubupdate "" "$new_url"
             ;;
         *)
             _okcat "订阅地址已保存，使用 'labproxy update' 命令更新配置"
@@ -849,33 +849,293 @@ EOF
     esac
 }
 
-function labproxyupdate() {
-    local url=$(cat "$LABPROXY_CONFIG_URL" 2>/dev/null)
-    local is_auto=false
+# ---- Multi-subscription management commands ----
 
-    case "$1" in
+# Add a new subscription: labproxy add <name> <url>
+function labproxyadd() {
+    local name="$1"
+    local url="$2"
+
+    [ -z "$name" ] && { _failcat "用法: labproxy add <名称> <订阅URL>"; return 1; }
+    [ -z "$url" ] && { _failcat "用法: labproxy add <名称> <订阅URL>"; return 1; }
+    [ "${url:0:4}" != "http" ] && { _failcat "无效的订阅地址，必须以 http 或 https 开头"; return 1; }
+
+    _ensure_subs_file
+
+    # Check if name already exists
+    local existing_url
+    existing_url=$("$BIN_YQ" ".subscriptions[\"$name\"].url // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    if [ -n "$existing_url" ]; then
+        _failcat "订阅 '${name}' 已存在 (URL: ${existing_url})"
+        printf "是否覆盖? [y/N]: "
+        read -r response
+        case "$response" in
+            [yY]|[yY][eE][sS]) ;;
+            *) return 1 ;;
+        esac
+    fi
+
+    # Add to subscriptions YAML
+    "$BIN_YQ" -i ".subscriptions[\"$name\"].url = \"$url\"" "$LABPROXY_SUBS_FILE" 2>/dev/null
+    "$BIN_YQ" -i ".subscriptions[\"$name\"].added_at = \"$(date '+%Y-%m-%d %H:%M:%S')\"" "$LABPROXY_SUBS_FILE" 2>/dev/null
+
+    _okcat "已添加订阅：${name}"
+
+    # If this is the first subscription, set it as active
+    local active
+    active="$(_active_subscription_name)"
+    if [ -z "$active" ]; then
+        _set_active_subscription "$name"
+        _okcat "已设为当前订阅：${name}"
+    fi
+
+    # Ask to download now
+    printf "是否立即下载? [y/N]: "
+    read -r response
+    case "$response" in
+        [yY]|[yY][eE][sS])
+            labproxysubupdate "$name" "$url"
+            ;;
+        *)
+            _okcat "使用 'labproxy update' 更新订阅配置"
+            ;;
+    esac
+}
+
+# Switch active subscription: labproxy use <name>
+function labproxyuse() {
+    local name="$1"
+    [ -z "$name" ] && {
+        _okcat "当前订阅：$(_active_subscription_name)"
+        return 0
+    }
+
+    _ensure_subs_file
+
+    local exists
+    exists=$("$BIN_YQ" ".subscriptions[\"$name\"] // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    [ "$exists" = "null" ] || [ -z "$exists" ] && {
+        _failcat "订阅 '${name}' 不存在，使用 'labproxy ls' 查看可用订阅"
+        return 1
+    }
+
+    _set_active_subscription "$name"
+
+    # Apply the subscription config
+    if ! _apply_active_subscription; then
+        _failcat "订阅 '${name}' 配置文件不存在，请先更新: labproxy update"
+        return 1
+    fi
+
+    # Update legacy URL file for backward compatibility
+    local url
+    url="$(_active_subscription_url)"
+    [ -n "$url" ] && _save_subscription_url "$url"
+
+    _merge_config_restart
+    _okcat "已切换到订阅：${name}"
+}
+
+# List all subscriptions: labproxy ls
+function labproxyls() {
+    _ensure_subs_file
+
+    local active
+    active="$(_active_subscription_name)"
+
+    local count
+    count=$("$BIN_YQ" '.subscriptions | length' "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    if [ "$count" = "0" ] || [ -z "$count" ]; then
+        _failcat "暂无保存的订阅，使用 'labproxy add <名称> <URL>' 添加"
+        return 1
+    fi
+
+    _okcat "已保存的订阅 (${count} 个)："
+    echo ""
+
+    "$BIN_YQ" '.subscriptions | to_entries | .[] | "\(.key)|\(.value.url)|\(.value.added_at // "")"' "$LABPROXY_SUBS_FILE" 2>/dev/null | while IFS='|' read -r name url added; do
+        local marker="  "
+        if [ "$name" = "$active" ]; then
+            marker="🔵"
+        fi
+        local config_file="$(_sub_config_file "$name")"
+        local node_count=""
+        if [ -f "$config_file" ]; then
+            node_count=$("$BIN_YQ" '(.. | select(tag == "!!map" and .name and .type)) | .name' "$config_file" 2>/dev/null | wc -l)
+            node_count="(${node_count// /} 节点)"
+        fi
+        printf "%s %-20s %s %s\n" "$marker" "$name" "$node_count" "$url"
+    done
+}
+
+# Update a specific subscription: labproxy update [name]
+function labproxysubupdate() {
+    local name="$1"
+    local url="$2"
+
+    # Handle backward-compatible subcommands
+    case "$name" in
     auto)
-        is_auto=true
-        [ -n "$2" ] && url=$2
+        # Auto-update mode: set up cron for active subscription
+        local active_name
+        active_name="$(_active_subscription_name)"
+        [ -z "$active_name" ] && { _failcat "无活跃订阅"; return 1; }
+        local active_url
+        active_url="$(_active_subscription_url)"
+        [ -n "$url" ] && active_url="$url"
+        _enable_auto_subscription_update "$active_url"
+        return 0
         ;;
     log)
         tail "${LABPROXY_UPDATE_LOG}" 2>/dev/null || _failcat "暂无更新日志"
         return 0
         ;;
-    *)
-        [ -n "$1" ] && url=$1
-        ;;
     esac
+
+    # If no name given, use active subscription
+    if [ -z "$name" ]; then
+        name="$(_active_subscription_name)"
+        [ -z "$name" ] && { _failcat "无活跃订阅，使用 'labproxy add <名称> <URL>' 添加"; return 1; }
+        url="$(_active_subscription_url)"
+    fi
+
+    [ -z "$url" ] && { _failcat "订阅 '${name}' 的 URL 为空"; return 1; }
+
+    _okcat "正在更新订阅：${name}"
 
     url=$(_resolve_update_url "$url")
 
-    # 如果是自动更新模式，则设置用户级定时任务
-    [ "$is_auto" = true ] && {
-        _enable_auto_subscription_update "$url"
-        return 0
+    _okcat '⏳' "正在下载，原配置已备份..."
+    mkdir -p "$(dirname "$LABPROXY_CONFIG_RAW_BAK")" "$(dirname "$LABPROXY_UPDATE_LOG")"
+    cp "$LABPROXY_CONFIG_RAW" "$LABPROXY_CONFIG_RAW_BAK" 2>/dev/null
+
+    _rollback() {
+        _failcat '❌' "$1"
+        cp "$LABPROXY_CONFIG_RAW_BAK" "$LABPROXY_CONFIG_RAW" 2>/dev/null
+        _append_update_log "订阅更新失败" "$name"
+        return 1
     }
 
-    _download_and_apply_subscription "$url"
+    _download_config "$LABPROXY_CONFIG_RAW" "$url" || { _rollback "下载失败，已回滚配置" || true; return 1; }
+    _valid_config "$LABPROXY_CONFIG_RAW" || { _rollback "转换失败，已回滚配置，转换日志：${BIN_SUBCONVERTER_LOG}" || true; return 1; }
+
+    # Save subscription config for multi-subscription
+    _save_sub_config "$name" "$LABPROXY_CONFIG_RAW"
+
+    _merge_config_restart || return 1
+    _okcat '✅' '订阅更新成功'
+
+    _save_subscription_url "$url"
+    _append_update_log "订阅更新成功" "$name"
+}
+
+# Remove a subscription: labproxy sub remove <name>
+function labproxysubremove() {
+    local name="$1"
+    [ -z "$name" ] && { _failcat "用法: labproxy sub remove <名称>"; return 1; }
+
+    _ensure_subs_file
+
+    local exists
+    exists=$("$BIN_YQ" ".subscriptions[\"$name\"] // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    [ "$exists" = "null" ] || [ -z "$exists" ] && {
+        _failcat "订阅 '${name}' 不存在"
+        return 1
+    }
+
+    printf "确认删除订阅 '%s'? [y/N]: " "$name"
+    read -r response
+    case "$response" in
+        [yY]|[yY][eE][sS]) ;;
+        *) return 1 ;;
+    esac
+
+    "$BIN_YQ" -i "del(.subscriptions[\"$name\"])" "$LABPROXY_SUBS_FILE" 2>/dev/null
+    rm -f "$(_sub_config_file "$name")"
+
+    # If removed the active subscription, clear active
+    local active
+    active="$(_active_subscription_name)"
+    if [ "$active" = "$name" ]; then
+        "$BIN_YQ" -i '.active = ""' "$LABPROXY_SUBS_FILE" 2>/dev/null
+        _failcat "已删除当前订阅，请使用 'labproxy use <名称>' 切换"
+    fi
+
+    _okcat "已删除订阅：${name}"
+}
+
+# Rename a subscription: labproxy sub rename <old> <new>
+function labproxysubrename() {
+    local old_name="$1"
+    local new_name="$2"
+
+    [ -z "$old_name" ] && { _failcat "用法: labproxy sub rename <旧名称> <新名称>"; return 1; }
+    [ -z "$new_name" ] && { _failcat "用法: labproxy sub rename <旧名称> <新名称>"; return 1; }
+
+    _ensure_subs_file
+
+    local exists
+    exists=$("$BIN_YQ" ".subscriptions[\"$old_name\"] // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    [ "$exists" = "null" ] || [ -z "$exists" ] && {
+        _failcat "订阅 '${old_name}' 不存在"
+        return 1
+    }
+
+    local new_exists
+    new_exists=$("$BIN_YQ" ".subscriptions[\"$new_name\"] // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    [ "$new_exists" != "null" ] && [ -n "$new_exists" ] && {
+        _failcat "订阅 '${new_name}' 已存在"
+        return 1
+    }
+
+    # Copy the subscription entry
+    local url
+    url=$("$BIN_YQ" ".subscriptions[\"$old_name\"].url" "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    "$BIN_YQ" -i ".subscriptions[\"$new_name\"] = .subscriptions[\"$old_name\"]" "$LABPROXY_SUBS_FILE" 2>/dev/null
+    "$BIN_YQ" -i "del(.subscriptions[\"$old_name\"])" "$LABPROXY_SUBS_FILE" 2>/dev/null
+
+    # Rename config file
+    [ -f "$(_sub_config_file "$old_name")" ] && mv "$(_sub_config_file "$old_name")" "$(_sub_config_file "$new_name")"
+
+    # Update active if needed
+    local active
+    active="$(_active_subscription_name)"
+    [ "$active" = "$old_name" ] && _set_active_subscription "$new_name"
+
+    _okcat "已重命名：${old_name} → ${new_name}"
+}
+
+# Sub command dispatcher: labproxy sub <list|enable|disable|rename|remove>
+function labproxysub() {
+    case "$1" in
+        list|ls)
+            labproxyls
+            ;;
+        remove|rm|delete)
+            shift
+            labproxysubremove "$@"
+            ;;
+        rename|mv)
+            shift
+            labproxysubrename "$@"
+            ;;
+        *)
+            cat <<EOF
+用法: labproxy sub <command> [args]
+
+多订阅管理命令:
+    list                列出所有订阅
+    remove <名称>       删除订阅
+    rename <旧名> <新名> 重命名订阅
+
+快捷命令:
+    labproxy add <名称> <URL>   添加订阅
+    labproxy use [名称]         切换/查看当前订阅
+    labproxy ls                 列出所有订阅
+    labproxy update [名称]      更新指定/当前订阅
+EOF
+            ;;
+    esac
 }
 
 function labproxymixin() {
@@ -892,6 +1152,227 @@ function labproxymixin() {
         less -f "$LABPROXY_CONFIG_MIXIN"
         ;;
     esac
+}
+
+# ---- Doctor diagnostic command ----
+
+# Check if running in container
+_is_container() {
+    [ -f "/.dockerenv" ] && return 0
+    grep -qaE '(docker|containerd|kubepods|lxc)' /proc/1/cgroup 2>/dev/null && return 0
+    [ -f /proc/1/cgroup ] && grep -q '^0::/' /proc/1/cgroup 2>/dev/null && {
+        local _init_comm
+        _init_comm="$(cat /proc/1/comm 2>/dev/null || true)"
+        case "${_init_comm:-}" in systemd|sysvinit|init|launchd|openrc-init) ;; *) return 0 ;; esac
+    }
+    return 1
+}
+
+# Check if running in WSL
+_is_wsl() {
+    grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null
+}
+
+# Check if running in WSL and on Windows mount
+_is_wsl_windows_mount() {
+    _is_wsl || return 1
+    local resolved
+    resolved="$(readlink -f "$LABPROXY_HOME_DIR" 2>/dev/null || echo "$LABPROXY_HOME_DIR")"
+    case "$resolved" in /mnt/[a-zA-Z]|/mnt/[a-zA-Z]/*) return 0 ;; *) return 1 ;; esac
+}
+
+# Doctor diagnostic command
+function labproxydoctor() {
+    echo ""
+    echo "🩺 LabProxy 诊断报告"
+    echo "══════════════════════════════════════"
+    echo ""
+
+    local issues=0
+    local ok_count=0
+
+    _check() {
+        local desc="$1"
+        local result="$2"
+        local fix="${3:-}"
+        if [ "$result" = "ok" ]; then
+            _okcat "✅" "$desc"
+            ok_count=$((ok_count + 1))
+        else
+            _failcat "❌" "$desc"
+            [ -n "$fix" ] && echo "   👉 $fix"
+            issues=$((issues + 1))
+        fi
+    }
+
+    # 1. Environment checks
+    echo "── 环境检测 ──"
+    local env_type="主机"
+    _is_container && env_type="容器"
+    _is_wsl && env_type="WSL"
+    _check "运行环境: ${env_type}" "ok"
+
+    if _is_wsl_windows_mount; then
+        _check "WSL 挂载路径 (应在 Linux 原生目录)" "fail" "请将项目移出 /mnt/c/ 到 Linux 原生目录"
+    else
+        _check "WSL 挂载路径" "ok"
+    fi
+
+    # Shell check
+    if [ -n "$BASH_VERSION" ] || [ -n "$ZSH_VERSION" ]; then
+        _check "Shell: ${_SHELL}" "ok"
+    else
+        _check "Shell: ${_SHELL:-unknown}" "fail" "仅支持 bash/zsh"
+    fi
+
+    # 2. Binary checks
+    echo ""
+    echo "── 二进制文件检测 ──"
+    if [ -x "$BIN_MIHOMO" ]; then
+        _check "mihomo 内核: $(basename "$BIN_MIHOMO")" "ok"
+    elif [ -x "$BIN_CLASH" ]; then
+        _check "clash 内核: $(basename "$BIN_CLASH")" "ok"
+    else
+        _check "代理内核" "fail" "重新执行 install.sh 安装"
+    fi
+
+    if [ -x "$BIN_YQ" ]; then
+        _check "yq: $(basename "$BIN_YQ")" "ok"
+    else
+        _check "yq" "fail" "重新执行 install.sh 安装"
+    fi
+
+    if [ -x "$BIN_SUBCONVERTER" ]; then
+        _check "subconverter: $(basename "$BIN_SUBCONVERTER")" "ok"
+    else
+        _check "subconverter" "fail" "重新执行 install.sh 安装"
+    fi
+
+    # 3. Config checks
+    echo ""
+    echo "── 配置文件检测 ──"
+    if [ -f "$LABPROXY_CONFIG_RUNTIME" ] && [ -s "$LABPROXY_CONFIG_RUNTIME" ]; then
+        _check "运行时配置: runtime.yaml" "ok"
+        local node_count
+        node_count=$("$BIN_YQ" '(.. | select(tag == "!!map" and .name and .type)) | .name' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null | wc -l)
+        echo "   📊 节点数量: ${node_count// /}"
+    else
+        _check "运行时配置: runtime.yaml" "fail" "执行 labproxy update 下载订阅"
+    fi
+
+    if [ -f "$LABPROXY_CONFIG_MIXIN" ]; then
+        _check "Mixin 配置: mixin.yaml" "ok"
+    else
+        _check "Mixin 配置: mixin.yaml" "fail" "重新执行 install.sh"
+    fi
+
+    # 4. Subscription checks
+    echo ""
+    echo "── 订阅检测 ──"
+    _ensure_subs_file
+    local sub_count
+    sub_count=$("$BIN_YQ" '.subscriptions | length' "$LABPROXY_SUBS_FILE" 2>/dev/null)
+    if [ "$sub_count" -gt 0 ] 2>/dev/null; then
+        _check "订阅数量: ${sub_count}" "ok"
+        local active
+        active="$(_active_subscription_name)"
+        if [ -n "$active" ]; then
+            _check "当前订阅: ${active}" "ok"
+        else
+            _check "当前订阅: 未设置" "fail" "执行 labproxy use <名称> 选择订阅"
+        fi
+    else
+        _check "订阅数量: 0" "fail" "执行 labproxy add <名称> <URL> 添加订阅"
+    fi
+
+    # 5. Process checks
+    echo ""
+    echo "── 进程检测 ──"
+    if is_labproxy_running; then
+        local pid
+        pid=$(cat "$LABPROXY_HOME_DIR/config/labproxy.pid" 2>/dev/null)
+        local uptime
+        uptime=$(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' ')
+        _check "LabProxy 进程: 运行中 (PID: ${pid:-unknown}, 运行: ${uptime:-未知})" "ok"
+    else
+        _check "LabProxy 进程: 未运行" "fail" "执行 labproxy on 启动"
+    fi
+
+    # 6. Port checks
+    echo ""
+    echo "── 端口检测 ──"
+    _get_proxy_port
+    _get_ui_port
+    _get_dns_port
+
+    if _is_bind "$MIXED_PORT" >/dev/null 2>&1; then
+        _check "代理端口: ${MIXED_PORT}" "ok"
+    else
+        _check "代理端口: ${MIXED_PORT} (未监听)" "fail" "执行 labproxy restart"
+    fi
+
+    if _is_bind "$UI_PORT" >/dev/null 2>&1; then
+        _check "管理端口: ${UI_PORT}" "ok"
+    else
+        _check "管理端口: ${UI_PORT} (未监听)" "fail" "执行 labproxy restart"
+    fi
+
+    if _is_bind "$DNS_PORT" >/dev/null 2>&1; then
+        _check "DNS 端口: ${DNS_PORT}" "ok"
+    else
+        _check "DNS 端口: ${DNS_PORT} (未监听)" "info"
+    fi
+
+    # 7. Cache checks
+    echo ""
+    echo "── 缓存检测 ──"
+    local cache_dir="$(_download_cache_dir)"
+    if [ -d "$cache_dir" ]; then
+        local cache_size
+        cache_size=$(du -sh "$cache_dir" 2>/dev/null | cut -f1)
+        _check "下载缓存: ${cache_size:-未知}" "ok"
+    else
+        _check "下载缓存: 无" "info"
+    fi
+
+    # 8. Log checks
+    local log_file="$LABPROXY_HOME_DIR/logs/labproxy.log"
+    if [ -f "$log_file" ]; then
+        local log_size
+        log_size=$(du -sh "$log_file" 2>/dev/null | cut -f1)
+        local recent_errors
+        recent_errors=$(grep -ciE 'error|fatal|panic' "$log_file" 2>/dev/null || echo 0)
+        if [ "$recent_errors" -gt 0 ] 2>/dev/null; then
+            _check "日志: ${log_size} (${recent_errors} 条错误)" "fail" "执行 tail -100 ${log_file} 查看详情"
+        else
+            _check "日志: ${log_size}" "ok"
+        fi
+    fi
+
+    # Summary
+    echo ""
+    echo "══════════════════════════════════════"
+    local total=$((ok_count + issues))
+    if [ "$issues" -eq 0 ]; then
+        _okcat "🎉" "诊断完成：${ok_count}/${total} 项通过，一切正常！"
+    else
+        _failcat "🩺" "诊断完成：${ok_count}/${total} 项通过，${issues} 项需要处理"
+        echo ""
+        echo "💡 建议操作："
+        if ! is_labproxy_running; then
+            echo "   1. 启动代理: labproxy on"
+        fi
+        if [ "$sub_count" = "0" ] 2>/dev/null || [ -z "$sub_count" ]; then
+            echo "   2. 添加订阅: labproxy add <名称> <URL>"
+        elif [ -z "$(_active_subscription_name)" ]; then
+            echo "   2. 选择订阅: labproxy use <名称>"
+        fi
+        if [ ! -f "$LABPROXY_CONFIG_RUNTIME" ] || [ ! -s "$LABPROXY_CONFIG_RUNTIME" ]; then
+            echo "   3. 更新订阅: labproxy update"
+        fi
+        echo ""
+        echo "   如问题仍然存在，请查看日志: tail -100 ${log_file}"
+    fi
 }
 
 function labproxyctl() {
@@ -940,9 +1421,25 @@ function labproxyctl() {
         shift
         labproxysubscribe "$@"
         ;;
+    add)
+        shift
+        labproxyadd "$@"
+        ;;
+    use)
+        shift
+        labproxyuse "$@"
+        ;;
+    ls)
+        shift
+        labproxyls "$@"
+        ;;
+    sub)
+        shift
+        labproxysub "$@"
+        ;;
     update)
         shift
-        labproxyupdate "$@"
+        labproxysubupdate "$@"
         ;;
     tui)
         labproxytui
@@ -950,6 +1447,10 @@ function labproxyctl() {
     lang)
         shift
         labproxylang "$@"
+        ;;
+    doctor)
+        shift
+        labproxydoctor "$@"
         ;;
     *)
         cat <<EOF
@@ -978,8 +1479,13 @@ Commands:
     mixin    [-e|-r]        Mixin 配置文件
     secret   [SECRET]       Web 控制台密钥
     subscribe [URL]         设置或查看订阅地址
-    update   [auto|log]     更新订阅配置
+    add      <名称> <URL>   添加订阅
+    use      [名称]         切换或查看当前订阅
+    ls                      列出所有订阅
+    sub      <list|remove|rename>  订阅管理
+    update   [名称]         更新指定或当前订阅
     lang     [zh|en]        切换 TUI 界面语言
+    doctor                  诊断环境与运行状态
 
 说明:
     • 用户空间运行，无需 sudo 权限

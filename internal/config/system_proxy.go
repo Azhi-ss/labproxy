@@ -263,7 +263,7 @@ func writeConfigLines(path string, lines []string) error {
 	if path == "" {
 		return fmt.Errorf("mixin config path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 — user-space config dir, standard Unix permissions
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 
@@ -271,7 +271,7 @@ func writeConfigLines(path string, lines []string) error {
 	if content != "" {
 		content += "\n"
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // #nosec G306 — user-space config file, standard Unix permissions
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

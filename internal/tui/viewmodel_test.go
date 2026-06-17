@@ -74,12 +74,12 @@ func TestBuildGroupViews_OnlyMetaOptions(t *testing.T) {
 func TestBuildGroupViews_PrioritySorting(t *testing.T) {
 	resp := proxy.ProxiesResponse{
 		Proxies: map[string]proxy.Proxy{
-			"PROXY":   {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
-			"GLOBAL":  {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
-			"CUSTOM":  {Name: "CUSTOM", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
-			"Node-A":  {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
-			"Node-B":  {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
-			"Node-C":  {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
+			"PROXY":  {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
+			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
+			"CUSTOM": {Name: "CUSTOM", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B": {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C": {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
 		},
 	}
 
@@ -99,12 +99,12 @@ func TestBuildGroupViews_PrioritySorting(t *testing.T) {
 func TestBuildGroupViews_WithFilter(t *testing.T) {
 	resp := proxy.ProxiesResponse{
 		Proxies: map[string]proxy.Proxy{
-			"GLOBAL":    {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B", "Node-C"}},
-			"PROXY":     {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C", "Node-D"}},
-			"Node-A":    {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
-			"Node-B":    {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
-			"Node-C":    {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
-			"Node-D":    {Name: "Node-D", Type: "SS", History: []proxy.DelayHistory{{Delay: 150}}},
+			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B", "Node-C"}},
+			"PROXY":  {Name: "PROXY", Type: "Selector", Now: "Node-C", All: []string{"Node-C", "Node-D"}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B": {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C": {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
+			"Node-D": {Name: "Node-D", Type: "SS", History: []proxy.DelayHistory{{Delay: 150}}},
 		},
 	}
 
@@ -126,12 +126,12 @@ func TestBuildGroupViews_WithFilter(t *testing.T) {
 func TestBuildGroupViews_FilterMatchesGroupName(t *testing.T) {
 	resp := proxy.ProxiesResponse{
 		Proxies: map[string]proxy.Proxy{
-			"GLOBAL":      {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
-			"PROXY":       {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
-			"MY-GROUP":    {Name: "MY-GROUP", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
-			"Node-A":      {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
-			"Node-B":      {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
-			"Node-C":      {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
+			"GLOBAL":   {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
+			"PROXY":    {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
+			"MY-GROUP": {Name: "MY-GROUP", Type: "Selector", Now: "Node-C", All: []string{"Node-C"}},
+			"Node-A":   {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B":   {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"Node-C":   {Name: "Node-C", Type: "SS", History: []proxy.DelayHistory{{Delay: 120}}},
 		},
 	}
 
@@ -147,10 +147,10 @@ func TestBuildGroupViews_FilterMatchesGroupName(t *testing.T) {
 func TestBuildGroupViews_FilterHidesGroupWithNoMatchingOptions(t *testing.T) {
 	resp := proxy.ProxiesResponse{
 		Proxies: map[string]proxy.Proxy{
-			"GLOBAL":      {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
-			"PROXY":       {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
-			"Node-A":      {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
-			"Node-B":      {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
+			"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A"}},
+			"PROXY":  {Name: "PROXY", Type: "Selector", Now: "Node-B", All: []string{"Node-B"}},
+			"Node-A": {Name: "Node-A", Type: "SS", History: []proxy.DelayHistory{{Delay: 42}}},
+			"Node-B": {Name: "Node-B", Type: "SS", History: []proxy.DelayHistory{{Delay: 84}}},
 		},
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestNewModel(t *testing.T) {
@@ -404,6 +405,91 @@ func TestUpdate_KeyMsg_InSearchMode(t *testing.T) {
 	}
 }
 
+func TestUpdate_KeyMsg_SearchModeEnterUsesLocalizedFilterStatus(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.searchMode = true
+	m.search.SetValue("node-a")
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("expected nil command for enter in search mode")
+	}
+	newM := newModel.(model)
+	if newM.searchMode {
+		t.Fatal("expected search mode to be false after enter")
+	}
+	if newM.statusLine != "过滤: node-a" {
+		t.Fatalf("expected localized filter status, got %q", newM.statusLine)
+	}
+}
+
+func TestFocusLabel_Localized(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+
+	m.focus = focusGroups
+	if got := m.focusLabel(); got != "代理组" {
+		t.Fatalf("focusGroups label: expected 代理组, got %q", got)
+	}
+
+	m.focus = focusOptions
+	if got := m.focusLabel(); got != "候选节点" {
+		t.Fatalf("focusOptions label: expected 候选节点, got %q", got)
+	}
+
+	SetLanguage(LangEn)
+	m.focus = focusGroups
+	if got := m.focusLabel(); got != "groups" {
+		t.Fatalf("focusGroups en label: expected groups, got %q", got)
+	}
+	m.focus = focusOptions
+	if got := m.focusLabel(); got != "options" {
+		t.Fatalf("focusOptions en label: expected options, got %q", got)
+	}
+}
+
+func TestValidateRestartCommand(t *testing.T) {
+	tests := []struct {
+		cmd     string
+		wantErr bool
+	}{
+		{"systemctl restart mihomo", false},
+		{"labproxy restart", false},
+		{"sudo systemctl restart mihomo", false},
+		{"/usr/bin/systemctl restart mihomo", false},
+		{"", false},
+		{"source common.sh && source proxyctl.sh && restart", false},
+		{"cmd with semicolon; ls", true},
+		{"cmd with pipe | cat", true},
+		{"cmd with & background", true},
+		{"cmd with && and & background", true},
+		{"cmd ending with &", true},
+		{"cmd with $variable", true},
+		{"cmd with `backtick`", true},
+		{"cmd with (parens)", true},
+		{"cmd with < redirect", true},
+		{"cmd with > redirect", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			err := validateRestartCommand(tt.cmd)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateRestartCommand(%q) error=%v, wantErr=%v", tt.cmd, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestView_Loading(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
@@ -455,6 +541,15 @@ func newLayoutTestModel() model {
 	// Initialize cached adaptive layout width
 	m.rebuildGroups()
 	return m
+}
+
+func assertMaxVisualWidth(t *testing.T, view string, width int) {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		if got := ansi.StringWidth(line); got > width {
+			t.Errorf("line width = %d, want <= %d: %q", got, width, line)
+		}
+	}
 }
 
 func TestView_BasicRender(t *testing.T) {
@@ -819,21 +914,6 @@ func TestFormatBytes(t *testing.T) {
 	}
 }
 
-func TestFocusLabel(t *testing.T) {
-	client := proxy.NewClient("http://localhost:9090", "")
-
-	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.focus = focusGroups
-	if m.focusLabel() != "groups" {
-		t.Fatalf("focusLabel(): expected 'groups', got %q", m.focusLabel())
-	}
-
-	m.focus = focusOptions
-	if m.focusLabel() != "options" {
-		t.Fatalf("focusLabel(): expected 'options', got %q", m.focusLabel())
-	}
-}
-
 // ── Adaptive layout tests ────────────────────────────────────────────
 
 func TestCalcGroupsMinWidth(t *testing.T) {
@@ -1055,6 +1135,222 @@ func TestRenderBody_NarrowTerminal(t *testing.T) {
 	body := m.renderBody(16)
 	if body == "" {
 		t.Fatal("expected non-empty body in narrow terminal")
+	}
+}
+
+func TestRenderBody_NarrowTerminalNeverExceedsContentWidth(t *testing.T) {
+	m := newLayoutTestModel()
+	m.width = 34
+	m.height = 16
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"手动选择超长代理组": {
+			Name: "手动选择超长代理组",
+			Type: "Selector",
+			Now:  "日本节点-低延迟-东京",
+			All:  []string{"日本节点-低延迟-东京", "美国节点-备用-洛杉矶"},
+		},
+	}}
+	m.rebuildGroups()
+
+	body := m.renderBody(10)
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	assertMaxVisualWidth(t, body, docWidth)
+}
+
+func TestVisibleSettingRows_CJKContentFitsWidth(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.settingsIndex = 1
+
+	const width = 16
+	rows := m.visibleSettingRows(width, 5)
+	if len(rows) == 0 {
+		t.Fatal("expected setting rows")
+	}
+	for _, row := range rows {
+		if got := ansi.StringWidth(row); got > width {
+			t.Fatalf("setting row width = %d, want <= %d: %q", got, width, row)
+		}
+	}
+}
+
+func TestVisibleGroupRows_LongCJKCurrentFitsWidth(t *testing.T) {
+	m := newLayoutTestModel()
+	m.groups = []GroupView{{
+		Name:    "手动选择超长代理组",
+		Current: "日本节点-低延迟-东京",
+		Options: []OptionView{{Name: "日本节点-低延迟-东京", Selected: true}},
+	}}
+
+	const width = 12
+	rows := m.visibleGroupRows(width, 1)
+	if len(rows) != 1 {
+		t.Fatalf("expected one row, got %d", len(rows))
+	}
+	if got := ansi.StringWidth(rows[0]); got > width {
+		t.Fatalf("group row width = %d, want <= %d: %q", got, width, rows[0])
+	}
+}
+
+func TestView_CJKFullRenderNoOverflow(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.width = 60
+	m.height = 20
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"手动选择": {
+			Name: "手动选择", Type: "Selector",
+			Now: "日本节点-低延迟-东京",
+			All: []string{"日本节点-低延迟-东京", "美国节点-备用-洛杉矶", "新加坡-优化线路"},
+		},
+		"自动切换": {
+			Name: "自动切换", Type: "URLTest",
+			Now: "香港-直连",
+			All: []string{"香港-直连", "台湾-优化节点"},
+		},
+	}}
+	m.connections = proxy.ConnectionsResponse{
+		DownloadTotal: 8192,
+		UploadTotal:   4096,
+		Connections: []proxy.Connection{
+			{
+				ID: "conn-1", Metadata: proxy.ConnectionMetadata{Host: "api.example.com", Destination: "10.0.0.1:443"},
+				Download: 1024, Upload: 512, Chains: []string{"日本节点-低延迟-东京"}, Rule: "MATCH",
+			},
+		},
+	}
+	m.rebuildGroups()
+
+	view := m.View()
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	assertMaxVisualWidth(t, view, docWidth)
+
+	if !strings.Contains(view, "手动选择") && !strings.Contains(view, "自动切换") {
+		t.Log("CJK group names may have been truncated — visually verified no overflow")
+	}
+}
+
+func TestView_CJKSearchModeFooterNoOverflow(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.width = 50
+	m.height = 20
+	m.searchMode = true
+	m.search.SetValue("日本节点")
+	m.statusLine = "过滤: 日本节点"
+
+	view := m.View()
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	assertMaxVisualWidth(t, view, docWidth)
+}
+
+func TestView_CJKVeryNarrowTerminalNoOverflow(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	for _, width := range []int{20, 30, 40} {
+		m := newLayoutTestModel()
+		m.width = width
+		m.height = 24
+		m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+			"手动选择": {
+				Name: "手动选择", Type: "Selector",
+				Now: "日本节点-低延迟-东京",
+				All: []string{"日本节点-低延迟-东京", "美国节点-备用-洛杉矶"},
+			},
+		}}
+		m.connections = proxy.ConnectionsResponse{
+			Connections: []proxy.Connection{
+				{
+					ID: "conn-1", Metadata: proxy.ConnectionMetadata{Host: "api.example.com", Destination: "10.0.0.1:443"},
+					Download: 1024, Upload: 512, Chains: []string{"日本节点-低延迟-东京"}, Rule: "MATCH",
+				},
+			},
+		}
+		m.rebuildGroups()
+
+		view := m.View()
+		docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+		assertMaxVisualWidth(t, view, docWidth)
+	}
+}
+
+func TestView_CJKSettingsOverlayTinyTerminal(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.width = 42
+	m.height = 15
+	m.settingsMode = true
+
+	view := m.View()
+	// Settings overlay uses lipgloss.Place(m.width, ...), so it fills the
+	// full terminal viewport, not the docStyle-constrained area.
+	assertMaxVisualWidth(t, view, m.width)
+
+	// Settings overlay should still contain key CJK labels
+	if !strings.Contains(view, "设置") {
+		t.Fatal("expected settings overlay to contain 设置 in zh locale")
+	}
+}
+
+func TestVisibleConnectionRows_CJKChainNamesNoOverflow(t *testing.T) {
+	m := newLayoutTestModel()
+	m.connections = proxy.ConnectionsResponse{
+		Connections: []proxy.Connection{
+			{
+				ID: "conn-1", Metadata: proxy.ConnectionMetadata{Host: "api.example.com", Destination: "10.0.0.1:443"},
+				Download: 1024, Upload: 512,
+				Chains: []string{"日本节点-低延迟-东京", "美国节点-备用-洛杉矶"},
+				Rule:   "DOMAIN-SUFFIX",
+			},
+		},
+	}
+
+	// Very narrow connection panel: only ~18 cols of effective content
+	const width = 22
+	rows := m.visibleConnectionRows(width, 2)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	}
+	if got := ansi.StringWidth(rows[0]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
+	}
+}
+
+func TestVisibleConnectionRows_CJKHostNameNoOverflow(t *testing.T) {
+	m := newLayoutTestModel()
+	m.connections = proxy.ConnectionsResponse{
+		Connections: []proxy.Connection{
+			{
+				ID: "conn-1", Metadata: proxy.ConnectionMetadata{Host: "", Destination: ""},
+				Download: 1024, Upload: 512,
+				Chains: []string{"日本节点-低延迟-东京"},
+				Rule:   "MATCH",
+			},
+		},
+	}
+
+	// Connection row falls back to ID when host/destination empty
+	const width = 30
+	rows := m.visibleConnectionRows(width, 1)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	}
+	if got := ansi.StringWidth(rows[0]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
 	}
 }
 

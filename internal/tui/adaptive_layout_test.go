@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"labproxy/internal/proxy"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"labproxy/internal/proxy"
 )
 
 // helper to create a test model with groups
@@ -268,7 +268,7 @@ func TestRenderBody_DoesNotPanic_ExtremeSizes(t *testing.T) {
 			m.height = tc.height
 			m.rebuildGroups()
 			body := m.renderBody(max(0, tc.height-10)) // approximate available height
-			_ = body // no panic = pass
+			_ = body                                   // no panic = pass
 		})
 	}
 }

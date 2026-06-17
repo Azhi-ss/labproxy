@@ -35,18 +35,18 @@ type Dict struct {
 	NoSelectableNodes string
 
 	// Settings overlay
-	SettingsTitle       string
-	SettingsHint        string
-	SettingLabelMode    string
+	SettingsTitle        string
+	SettingsHint         string
+	SettingLabelMode     string
 	SettingLabelSysProxy string
 	SettingLabelAllowLan string
-	SettingLabelTun     string
-	SettingLabelRestart string
-	HintCycle           string
-	HintNewShells       string
-	HintRestart         string
-	NoSettingsAvailable string
-	ValueRestart        string
+	SettingLabelTun      string
+	SettingLabelRestart  string
+	HintCycle            string
+	HintNewShells        string
+	HintRestart          string
+	NoSettingsAvailable  string
+	ValueRestart         string
 
 	// Connections panel
 	PanelConnections    string
@@ -54,8 +54,8 @@ type Dict struct {
 	NoActiveConnections string
 
 	// Footer / status line
-	StatusReady   string
-	SearchLabel   string
+	StatusReady string
+	SearchLabel string
 
 	// Status messages
 	StatusConnecting  string
@@ -67,18 +67,23 @@ type Dict struct {
 	SettingsOpenHint  string
 	FocusOptions      string
 	FocusGroups       string
+	FocusGroupsLabel  string
+	FocusOptionsLabel string
 	FilterLabelFmt    string
 
 	// Operation results
-	SwitchedFmt       string
-	ModeToFmt         string
-	SysProxyPrefFmt   string
-	AllowLanPrefFmt   string
-	TunPrefFmt        string
-	RestartUnavailable string
-	RuntimeRestarted  string
-	HintRestartShell  string
-	HintRestartMixin  string
+	SwitchedFmt           string
+	ModeToFmt             string
+	ModeApplyFailedFmt    string
+	ModeSaveFailedFmt     string
+	SysProxyPrefFmt       string
+	AllowLanPrefFmt       string
+	TunPrefFmt            string
+	RestartUnavailable    string
+	RestartValidateErrFmt string
+	RuntimeRestarted      string
+	HintRestartShell      string
+	HintRestartMixin      string
 
 	// KeyMap help texts
 	HelpMoveUp          string
@@ -146,26 +151,31 @@ var dicts = map[Language]Dict{
 		StatusReady: "ready",
 		SearchLabel: "Search:",
 
-		StatusConnecting: "connecting\u2026",
-		StatusConnected:  "connected",
-		SearchCancelled:  "search cancelled",
-		FilterNone:       "none",
-		SettingsClosed:   "settings closed",
-		TypeToFilter:     "type to filter groups or proxies",
-		SettingsOpenHint: "settings \u2014 enter apply \u00b7 esc close",
-		FocusOptions:     "focus: options",
-		FocusGroups:      "focus: groups",
-		FilterLabelFmt:   "filter: %s",
+		StatusConnecting:  "connecting\u2026",
+		StatusConnected:   "connected",
+		SearchCancelled:   "search cancelled",
+		FilterNone:        "none",
+		SettingsClosed:    "settings closed",
+		TypeToFilter:      "type to filter groups or proxies",
+		SettingsOpenHint:  "settings \u2014 enter apply \u00b7 esc close",
+		FocusOptions:      "focus: options",
+		FocusGroups:       "focus: groups",
+		FocusGroupsLabel:  "groups",
+		FocusOptionsLabel: "options",
+		FilterLabelFmt:    "filter: %s",
 
-		SwitchedFmt:        "switched %s \u2192 %s",
-		ModeToFmt:          "mode \u2192 %s",
-		SysProxyPrefFmt:    "system proxy pref \u2192 %s (applies to new shells / next start)",
-		AllowLanPrefFmt:    "allow-lan pref \u2192 %s (saved, restart to apply)",
-		TunPrefFmt:         "tun pref \u2192 %s (saved, restart to apply)",
-		RestartUnavailable: "restart command unavailable; run labproxy restart in shell",
-		RuntimeRestarted:   "runtime restarted and settings reapplied",
-		HintRestartShell:   "run labproxy restart in shell",
-		HintRestartMixin:   "apply saved mixin changes",
+		SwitchedFmt:           "switched %s \u2192 %s",
+		ModeToFmt:             "mode \u2192 %s",
+		ModeApplyFailedFmt:    "mode saved as %s; live apply failed: %v",
+		ModeSaveFailedFmt:     " (live ok, mixin save failed: %v)",
+		SysProxyPrefFmt:       "system proxy pref \u2192 %s (applies to new shells / next start)",
+		AllowLanPrefFmt:       "allow-lan pref \u2192 %s (saved, restart to apply)",
+		TunPrefFmt:            "tun pref \u2192 %s (saved, restart to apply)",
+		RestartUnavailable:    "restart command unavailable; run labproxy restart in shell",
+		RestartValidateErrFmt: "restart command contains unsafe character %q",
+		RuntimeRestarted:      "runtime restarted and settings reapplied",
+		HintRestartShell:      "run labproxy restart in shell",
+		HintRestartMixin:      "apply saved mixin changes",
 
 		HelpMoveUp:          "move up",
 		HelpMoveDown:        "move down",
@@ -227,26 +237,31 @@ var dicts = map[Language]Dict{
 		StatusReady: "\u5c31\u7eea",
 		SearchLabel: "\u641c\u7d22:",
 
-		StatusConnecting: "\u8fde\u63a5\u4e2d\u2026",
-		StatusConnected:  "\u5df2\u8fde\u63a5",
-		SearchCancelled:  "\u641c\u7d22\u5df2\u53d6\u6d88",
-		FilterNone:       "\u65e0",
-		SettingsClosed:   "\u8bbe\u7f6e\u5df2\u5173\u95ed",
-		TypeToFilter:     "\u8f93\u5165\u4ee5\u8fc7\u6ee4\u4ee3\u7406\u7ec4\u6216\u8282\u70b9",
-		SettingsOpenHint: "\u8bbe\u7f6e \u2014 \u56de\u8f66\u786e\u8ba4 \u00b7 esc \u5173\u95ed",
-		FocusOptions:     "\u7126\u70b9: \u5019\u9009\u8282\u70b9",
-		FocusGroups:      "\u7126\u70b9: \u4ee3\u7406\u7ec4",
-		FilterLabelFmt:   "\u8fc7\u6ee4: %s",
+		StatusConnecting:  "\u8fde\u63a5\u4e2d\u2026",
+		StatusConnected:   "\u5df2\u8fde\u63a5",
+		SearchCancelled:   "\u641c\u7d22\u5df2\u53d6\u6d88",
+		FilterNone:        "\u65e0",
+		SettingsClosed:    "\u8bbe\u7f6e\u5df2\u5173\u95ed",
+		TypeToFilter:      "\u8f93\u5165\u4ee5\u8fc7\u6ee4\u4ee3\u7406\u7ec4\u6216\u8282\u70b9",
+		SettingsOpenHint:  "\u8bbe\u7f6e \u2014 \u56de\u8f66\u786e\u8ba4 \u00b7 esc \u5173\u95ed",
+		FocusOptions:      "\u7126\u70b9: \u5019\u9009\u8282\u70b9",
+		FocusGroups:       "\u7126\u70b9: \u4ee3\u7406\u7ec4",
+		FocusGroupsLabel:  "\u4ee3\u7406\u7ec4",
+		FocusOptionsLabel: "\u5019\u9009\u8282\u70b9",
+		FilterLabelFmt:    "\u8fc7\u6ee4: %s",
 
-		SwitchedFmt:        "\u5df2\u5207\u6362 %s \u2192 %s",
-		ModeToFmt:          "\u6a21\u5f0f \u2192 %s",
-		SysProxyPrefFmt:    "\u7cfb\u7edf\u4ee3\u7406\u504f\u597d \u2192 %s\uff08\u5bf9\u65b0\u7ec8\u7aef/\u4e0b\u6b21\u542f\u52a8\u751f\u6548\uff09",
-		AllowLanPrefFmt:    "\u5c40\u57df\u7f51\u504f\u597d \u2192 %s\uff08\u5df2\u4fdd\u5b58\uff0c\u91cd\u542f\u540e\u751f\u6548\uff09",
-		TunPrefFmt:         "TUN \u504f\u597d \u2192 %s\uff08\u5df2\u4fdd\u5b58\uff0c\u91cd\u542f\u540e\u751f\u6548\uff09",
-		RestartUnavailable: "\u91cd\u542f\u547d\u4ee4\u4e0d\u53ef\u7528\uff1b\u8bf7\u5728 shell \u4e2d\u8fd0\u884c labproxy restart",
-		RuntimeRestarted:   "\u8fd0\u884c\u65f6\u5df2\u91cd\u542f\u4e14\u8bbe\u7f6e\u5df2\u91cd\u65b0\u5e94\u7528",
-		HintRestartShell:   "\u5728 shell \u4e2d\u8fd0\u884c labproxy restart",
-		HintRestartMixin:   "\u5e94\u7528\u5df2\u4fdd\u5b58\u7684 mixin \u53d8\u66f4",
+		SwitchedFmt:           "\u5df2\u5207\u6362 %s \u2192 %s",
+		ModeToFmt:             "\u6a21\u5f0f \u2192 %s",
+		ModeApplyFailedFmt:    "\u6a21\u5f0f\u5df2\u4fdd\u5b58\u4e3a %s\uff1b\u5b9e\u65f6\u5e94\u7528\u5931\u8d25\uff1a%v",
+		ModeSaveFailedFmt:     " (\u5b9e\u65f6\u751f\u6548\uff0cmixin \u4fdd\u5b58\u5931\u8d25\uff1a%v)",
+		SysProxyPrefFmt:       "\u7cfb\u7edf\u4ee3\u7406\u504f\u597d \u2192 %s\uff08\u5bf9\u65b0\u7ec8\u7aef/\u4e0b\u6b21\u542f\u52a8\u751f\u6548\uff09",
+		AllowLanPrefFmt:       "\u5c40\u57df\u7f51\u504f\u597d \u2192 %s\uff08\u5df2\u4fdd\u5b58\uff0c\u91cd\u542f\u540e\u751f\u6548\uff09",
+		TunPrefFmt:            "TUN \u504f\u597d \u2192 %s\uff08\u5df2\u4fdd\u5b58\uff0c\u91cd\u542f\u540e\u751f\u6548\uff09",
+		RestartUnavailable:    "\u91cd\u542f\u547d\u4ee4\u4e0d\u53ef\u7528\uff1b\u8bf7\u5728 shell \u4e2d\u8fd0\u884c labproxy restart",
+		RestartValidateErrFmt: "\u91cd\u542f\u547d\u4ee4\u5305\u542b\u4e0d\u5b89\u5168\u5b57\u7b26 %q",
+		RuntimeRestarted:      "\u8fd0\u884c\u65f6\u5df2\u91cd\u542f\u4e14\u8bbe\u7f6e\u5df2\u91cd\u65b0\u5e94\u7528",
+		HintRestartShell:      "\u5728 shell \u4e2d\u8fd0\u884c labproxy restart",
+		HintRestartMixin:      "\u5e94\u7528\u5df2\u4fdd\u5b58\u7684 mixin \u53d8\u66f4",
 
 		HelpMoveUp:          "\u4e0a\u79fb",
 		HelpMoveDown:        "\u4e0b\u79fb",

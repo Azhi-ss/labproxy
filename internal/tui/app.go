@@ -258,16 +258,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searchMode {
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-			m.searchMode = false
-			m.search.Blur()
-			m.rebuildGroups()
-			m.statusLine = T().SearchCancelled
-			return m, nil
-		case key.Matches(msg, m.keys.Select):
-			m.searchMode = false
-			m.search.Blur()
-			m.rebuildGroups()
-			m.statusLine = fmt.Sprintf("filter: %s", fallback(m.search.Value(), T().FilterNone))
+				m.searchMode = false
+				m.search.Blur()
+				m.rebuildGroups()
+				m.statusLine = T().SearchCancelled
+				return m, nil
+			case key.Matches(msg, m.keys.Select):
+				m.searchMode = false
+				m.search.Blur()
+				m.rebuildGroups()
+				m.statusLine = fmt.Sprintf(T().FilterLabelFmt, fallback(m.search.Value(), T().FilterNone))
 				return m, nil
 			default:
 				var cmd tea.Cmd
@@ -280,10 +280,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case m.settingsMode:
 			switch {
-		case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-			m.settingsMode = false
-			m.statusLine = T().SettingsClosed
-			return m, nil
+			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
+				m.settingsMode = false
+				m.statusLine = T().SettingsClosed
+				return m, nil
 			case key.Matches(msg, m.keys.Up):
 				m.settingsIndex--
 				if m.settingsIndex < 0 {
@@ -626,9 +626,9 @@ func (m model) cycleModeCmd() tea.Cmd {
 		switch {
 		case persistErr == nil && liveErr == nil:
 		case persistErr != nil && liveErr == nil:
-			status += fmt.Sprintf(" (live ok, mixin save failed: %v)", persistErr)
+			status += fmt.Sprintf(T().ModeSaveFailedFmt, persistErr)
 		case persistErr == nil && liveErr != nil:
-			status = fmt.Sprintf("mode saved as %s; live apply failed: %v", next, liveErr)
+			status = fmt.Sprintf(T().ModeApplyFailedFmt, next, liveErr)
 		default:
 			return errMsg{fmt.Errorf("save mode: %v; live apply: %v", persistErr, liveErr)}
 		}
@@ -716,6 +716,27 @@ func (m model) toggleTunCmd() tea.Cmd {
 	}
 }
 
+// validateRestartCommand rejects shell metacharacters that could enable
+// command injection through the user-supplied restart command. It allows
+// && (logical AND used for chaining source + command) but rejects
+// standalone & (background operator).
+func validateRestartCommand(cmd string) error {
+	for i := 0; i < len(cmd); i++ {
+		ch := cmd[i]
+		switch ch {
+		case ';', '|', '$', '`', '(', ')', '<', '>', '\n', '\r':
+			return fmt.Errorf(T().RestartValidateErrFmt, ch)
+		case '&':
+			// Allow && (shell AND) but reject standalone & (background)
+			if i+1 >= len(cmd) || cmd[i+1] != '&' {
+				return fmt.Errorf(T().RestartValidateErrFmt, ch)
+			}
+			i++ // skip second &
+		}
+	}
+	return nil
+}
+
 func (m model) restartRuntimeCmd() tea.Cmd {
 	if strings.TrimSpace(m.restartCommand) == "" {
 		return func() tea.Msg {
@@ -727,6 +748,12 @@ func (m model) restartRuntimeCmd() tea.Cmd {
 				status: T().RestartUnavailable,
 				data:   state,
 			}
+		}
+	}
+
+	if err := validateRestartCommand(m.restartCommand); err != nil {
+		return func() tea.Msg {
+			return errMsg{err}
 		}
 	}
 
@@ -789,13 +816,11 @@ func (m model) currentGroup() *GroupView {
 var (
 	// ── Theme palette ──────────────────────────────────────────────────
 	// Primary: cool cyan-blue for identity & structure
-	colorPrimary      = lipgloss.Color("39")  // bright blue
-	colorPrimaryMuted = lipgloss.Color("68")  // muted slate-blue
+	colorPrimary = lipgloss.Color("39") // bright blue
 	// Accent: vivid teal for focus & active states
 	colorAccent = lipgloss.Color("86") // bright cyan-green
 	// Surface: background tints for selection & status
 	colorSurfaceHigh = lipgloss.Color("62") // deep indigo — selection bg
-	colorSurfaceLow  = lipgloss.Color("236") // dark surface — subtle bg
 	// Content: text hierarchy
 	colorTextPrimary   = lipgloss.Color("252") // near-white
 	colorTextSecondary = lipgloss.Color("246") // mid-gray
@@ -803,7 +828,6 @@ var (
 	// Semantic: state & delay colors
 	colorSuccess = lipgloss.Color("42")  // green  — low delay / on
 	colorWarning = lipgloss.Color("220") // yellow — mid delay
-	colorDanger  = lipgloss.Color("203") // red    — high delay / error
 	colorInfo    = lipgloss.Color("117") // light blue — informational
 
 	// ── Structural styles ──────────────────────────────────────────────
@@ -846,6 +870,9 @@ var (
 	// ── Semantic helpers ───────────────────────────────────────────────
 	onStyle  = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
 	offStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
+
+	// ── Layout helpers ─────────────────────────────────────────────────
+	fitLineStyle = lipgloss.NewStyle() // reused by fitLine to avoid per-call allocation
 )
 
 func (m model) renderHeader() string {
@@ -933,7 +960,7 @@ func (m model) calcGroupsMinWidth(columnContentWidth int) int {
 	if group := m.currentGroup(); group != nil {
 		for _, opt := range group.Options {
 			// Format: " ● name delay" — marker(1) + space(1) + name + space(1) + delay
-			optRowWidth := 1 + 1 + ansi.StringWidth(opt.Name) + 1 + len(plainDelayLabel(opt.DelayMS))
+			optRowWidth := 1 + 1 + ansi.StringWidth(opt.Name) + 1 + ansi.StringWidth(plainDelayLabel(opt.DelayMS))
 			if optRowWidth > optionsContentWidth {
 				optionsContentWidth = optRowWidth
 			}
@@ -984,9 +1011,10 @@ func (m model) renderBody(availableHeight int) string {
 		columnContentWidth = 0
 	}
 
-	// Dynamic adaptive width: use cached Groups panel width
-	leftWidth := m.groupPanelWidth
-	middleWidth := columnContentWidth - leftWidth
+	// Dynamic adaptive width: use cached Groups panel width, but never let the
+	// split exceed the terminal content area on very narrow screens.
+	leftWidth := min(max(0, m.groupPanelWidth), columnContentWidth)
+	middleWidth := max(0, columnContentWidth-leftWidth)
 	topContentHeight := max(0, topTotalHeight-panelFrameHeight)
 
 	top := lipgloss.NewStyle().MaxWidth(docWidth).MaxHeight(topTotalHeight).Render(
@@ -1097,11 +1125,11 @@ func (m model) visibleGroupRows(width, limit int) []string {
 	}
 	start, end := window(m.groupIndex, len(m.groups), limit)
 	rows := make([]string, 0, end-start)
-	
+
 	for idx := start; idx < end; idx++ {
 		group := m.groups[idx]
 		isSelected := idx == m.groupIndex
-		
+
 		prefix := "  "
 		if isSelected {
 			prefix = "▸ "
@@ -1113,12 +1141,12 @@ func (m model) visibleGroupRows(width, limit int) []string {
 			currentMarkLen = ansi.StringWidth(" [" + group.Current + "]")
 		}
 
-		reservedPrefix := 2 // "▸ " or "  "
+		reservedPrefix := ansi.StringWidth(prefix) // "▸ " or "  " — both are 2 cols today, but self-documenting
 		nameWidth := width - reservedPrefix - currentMarkLen
 		if nameWidth < 4 {
 			nameWidth = 4
 		}
-		
+
 		truncatedName := ansi.Truncate(group.Name, nameWidth, "…")
 
 		baseStyle := lipgloss.NewStyle()
@@ -1140,11 +1168,7 @@ func (m model) visibleGroupRows(width, limit int) []string {
 		}
 
 		line := baseStyle.Render(prefix+truncatedName) + currentMark
-		visLen := ansi.StringWidth(line)
-		if visLen < width {
-			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
-		}
-		rows = append(rows, line)
+		rows = append(rows, fitStyledLine(line, width, baseStyle))
 	}
 	return rows
 }
@@ -1186,23 +1210,19 @@ func (m model) visibleOptionRows(width, limit int) []string {
 		}
 		delayStrPlain := plainDelayLabel(option.DelayMS)
 
-		reserved := 1 + 1 + 1 + 1 + len(delayStrPlain)
+		reserved := 1 + 1 + 1 + 1 + ansi.StringWidth(delayStrPlain)
 		nameWidth := width - reserved
 		if nameWidth < 4 {
 			nameWidth = 4
 		}
 		truncatedName := ansi.Truncate(option.Name, nameWidth, "…")
 
-		line := baseStyle.Render(" ") + 
-				markerStyle.Render(markerChar) + 
-				baseStyle.Render(" "+truncatedName+" ") + 
-				delayStyle.Render(delayStrPlain)
+		line := baseStyle.Render(" ") +
+			markerStyle.Render(markerChar) +
+			baseStyle.Render(" "+truncatedName+" ") +
+			delayStyle.Render(delayStrPlain)
 
-		visLen := ansi.StringWidth(line)
-		if visLen < width {
-			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
-		}
-		rows = append(rows, line)
+		rows = append(rows, fitStyledLine(line, width, baseStyle))
 	}
 	return rows
 }
@@ -1271,22 +1291,22 @@ func (m model) visibleSettingRows(width, limit int) []string {
 		}
 
 		hintPart := ""
-		hintLen := 0
+		hintWidth := 0
 		if isSelected && item.Hint != "" {
 			hintPart = "  " + item.Hint
-			hintLen = len([]rune(hintPart))
+			hintWidth = ansi.StringWidth(hintPart)
 		}
 
-		reserved := len([]rune(prefix)) + 2 + len([]rune(valueStrPlain)) + hintLen
+		reserved := ansi.StringWidth(prefix) + 2 + ansi.StringWidth(valueStrPlain) + hintWidth
 		labelWidth := width - reserved
 		if labelWidth < 4 {
 			labelWidth = 4
 		}
 		truncatedLabel := ansi.Truncate(item.Label, labelWidth, "…")
 
-		line := baseStyle.Render(prefix+truncatedLabel+"  ") + 
-				valueStyle.Render(valueStrPlain)
-		
+		line := baseStyle.Render(prefix+truncatedLabel+"  ") +
+			valueStyle.Render(valueStrPlain)
+
 		if hintPart != "" {
 			hintStyle := mutedStyle
 			if isSelected {
@@ -1295,11 +1315,7 @@ func (m model) visibleSettingRows(width, limit int) []string {
 			line += hintStyle.Render(hintPart)
 		}
 
-		visLen := ansi.StringWidth(line)
-		if visLen < width {
-			line += baseStyle.Render(strings.Repeat(" ", width-visLen))
-		}
-		rows = append(rows, line)
+		rows = append(rows, fitStyledLine(line, width, baseStyle))
 	}
 	return rows
 }
@@ -1343,7 +1359,18 @@ func fitLine(line string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return fitLineStyle.MaxWidth(width).Render(line)
+}
+
+func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
+	if width <= 0 {
+		return ""
+	}
+	line = ansi.Truncate(line, width, "…")
+	if visLen := ansi.StringWidth(line); visLen < width {
+		line += padStyle.Render(strings.Repeat(" ", width-visLen))
+	}
+	return line
 }
 
 func renderPanelContent(title, subtitle string, rows []string, width, height int) string {
@@ -1497,9 +1524,9 @@ func connectionTarget(conn proxy.Connection) string {
 func (m model) focusLabel() string {
 	switch m.focus {
 	case focusGroups:
-		return "groups"
+		return T().FocusGroupsLabel
 	default:
-		return "options"
+		return T().FocusOptionsLabel
 	}
 }
 
