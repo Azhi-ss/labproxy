@@ -105,6 +105,14 @@ type Dict struct {
 	SearchPlaceholder string
 	BoolOn            string
 	BoolOff           string
+
+	// Rules manager
+	RulesTitle         string
+	RulesMenuList      string
+	RulesMenuProviders string
+	RulesMenuImport    string
+	RulesMenuReset     string
+	RulesHelpOpen      string
 }
 
 var currentLang = LangEn
@@ -195,6 +203,13 @@ var dicts = map[Language]Dict{
 		SearchPlaceholder: "Search proxies or groups",
 		BoolOn:            "on",
 		BoolOff:           "off",
+
+		RulesTitle:         "Rules Manager",
+		RulesMenuList:      "Rule list",
+		RulesMenuProviders: "Rule providers",
+		RulesMenuImport:    "Import rules",
+		RulesMenuReset:     "Reset to default",
+		RulesHelpOpen:      "Open rules manager",
 	},
 	LangZh: {
 		AppTitle:          "LabProxy",
@@ -281,6 +296,13 @@ var dicts = map[Language]Dict{
 		SearchPlaceholder: "\u641c\u7d22\u4ee3\u7406\u7ec4\u6216\u8282\u70b9",
 		BoolOn:            "\u5f00",
 		BoolOff:           "\u5173",
+
+		RulesTitle:         "\u89c4\u5219\u7ba1\u7406",
+		RulesMenuList:      "\u89c4\u5219\u5217\u8868",
+		RulesMenuProviders: "\u89c4\u5219\u63d0\u4f9b\u8005",
+		RulesMenuImport:    "\u5bfc\u5165\u89c4\u5219",
+		RulesMenuReset:     "\u91cd\u7f6e\u4e3a\u9ed8\u8ba4",
+		RulesHelpOpen:      "\u6253\u5f00\u89c4\u5219\u7ba1\u7406",
 	},
 }
 

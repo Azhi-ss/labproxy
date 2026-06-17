@@ -9,6 +9,7 @@ import (
 	"labproxy/internal/config"
 	"labproxy/internal/proxy"
 	"labproxy/internal/tui"
+	"labproxy/internal/tui/rules"
 )
 
 func main() {
@@ -21,6 +22,10 @@ func main() {
 	)
 	flag.Parse()
 
+	if len(os.Args) >= 2 && os.Args[1] == "rules" {
+		os.Exit(runRulesCLI(os.Stdout, os.Stderr, os.Args[2:], *mixinConfig))
+	}
+
 	if *endpoint == "" {
 		fmt.Fprintln(os.Stderr, "missing required --endpoint")
 		os.Exit(1)
@@ -32,11 +37,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	rulesModal := rules.NewModal(*mixinConfig)
+
 	app := tui.NewApp(proxy.NewClient(*endpoint, *secret), tui.Options{
 		Endpoint:           *endpoint,
 		SystemProxyEnabled: systemProxyEnabled,
 		MixinConfigPath:    *mixinConfig,
 		RestartCommand:     *restartCommand,
+		RulesModal:         rulesModal,
 	})
 
 	tui.SetLanguage(tui.Language(*lang))

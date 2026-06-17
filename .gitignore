@@ -71,6 +71,18 @@ build/
 
 # AI assistant work directories and context files
 .codebuddy/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/skills/**
+!.claude/agents/
+!.claude/agents/**
+!.claude/rules/
+!.claude/rules/**
+!.claude/commands/
+!.claude/commands/**
 CLAUDE.md
 CODEBUDDY.md
+
+# rules backups
+mixin.yaml.bak.*

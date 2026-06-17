@@ -1444,6 +1444,10 @@ function labproxyctl() {
     tui)
         labproxytui
         ;;
+    rules)
+        shift
+        exec "$LABPROXY_TUI_BIN" rules --mixin-config "$LABPROXY_CONFIG_MIXIN" "$@"
+        ;;
     lang)
         shift
         labproxylang "$@"

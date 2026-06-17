@@ -1,0 +1,3 @@
+# preset: tld-not-cn
+# description: Non-CN TLDs via proxy
+- GEOIP,!CN,PROXY

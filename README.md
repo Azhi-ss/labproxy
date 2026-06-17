@@ -101,6 +101,33 @@ labproxy tui             # 打开 TUI 界面
 
 ---
 
+## 规则管理
+
+```bash
+# TUI 中按 R 键打开规则管理弹窗
+labproxy tui  # 按 R 键
+
+# CLI 子命令
+labproxy rules list
+labproxy rules add --type=DOMAIN-SUFFIX --payload=example.com --proxy=PROXY
+labproxy rules disable 0
+labproxy rules enable 0
+labproxy rules move 0 2
+labproxy rules delete 0
+labproxy rules import --source=preset:direct
+labproxy rules import --source=https://example.com/rules.yaml
+labproxy rules export --out=./my-rules.yaml
+labproxy rules reset -y
+labproxy rules providers list
+labproxy rules providers add --name=google --type=http --behavior=domain \
+    --url=https://example.com/g.yaml --path=./providers/google.yaml --interval=86400
+labproxy rules providers refresh google
+```
+
+支持的规则类型：`DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `IP-CIDR`, `IP-CIDR6`, `SRC-IP-CIDR`, `SRC-PORT`, `GEOIP`, `GEOSITE`, `RULE-SET`, `MATCH`, `MATCH-SRC`。
+
+---
+
 ## TUI 交互界面
 
 ```bash

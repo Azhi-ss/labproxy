@@ -101,6 +101,33 @@ labproxy tui             # open the TUI
 
 ---
 
+## Rules Management
+
+```bash
+# Open the rules manager modal by pressing R inside the TUI
+labproxy tui  # press R
+
+# CLI subcommands
+labproxy rules list
+labproxy rules add --type=DOMAIN-SUFFIX --payload=example.com --proxy=PROXY
+labproxy rules disable 0
+labproxy rules enable 0
+labproxy rules move 0 2
+labproxy rules delete 0
+labproxy rules import --source=preset:direct
+labproxy rules import --source=https://example.com/rules.yaml
+labproxy rules export --out=./my-rules.yaml
+labproxy rules reset -y
+labproxy rules providers list
+labproxy rules providers add --name=google --type=http --behavior=domain \
+    --url=https://example.com/g.yaml --path=./providers/google.yaml --interval=86400
+labproxy rules providers refresh google
+```
+
+Supported rule types: `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `IP-CIDR`, `IP-CIDR6`, `SRC-IP-CIDR`, `SRC-PORT`, `GEOIP`, `GEOSITE`, `RULE-SET`, `MATCH`, `MATCH-SRC`.
+
+---
+
 ## TUI Interface
 
 ```bash
