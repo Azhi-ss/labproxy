@@ -149,3 +149,126 @@ func TestRunProxiesCLI_HumanReadable(t *testing.T) {
 		t.Errorf("human output should contain GLOBAL: %s", s)
 	}
 }
+
+func TestRunConnectionsCLI_CloseOne(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runConnectionsCLI(&out, &out, []string{"close", "conn-xyz", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method=%s want DELETE", gotMethod)
+	}
+	if gotPath != "/connections/conn-xyz" {
+		t.Errorf("path=%s want /connections/conn-xyz", gotPath)
+	}
+	var env struct {
+		OK   bool   `json:"ok"`
+		Data struct {
+			Closed string `json:"closed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Data.Closed != "conn-xyz" {
+		t.Errorf("result wrong: %+v", env)
+	}
+}
+
+func TestRunConnectionsCLI_CloseAll(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runConnectionsCLI(&out, &out, []string{"close", "all", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method=%s want DELETE", gotMethod)
+	}
+	if gotPath != "/connections" {
+		t.Errorf("path=%s want /connections (all)", gotPath)
+	}
+	var env struct {
+		OK   bool   `json:"ok"`
+		Data struct {
+			Closed string `json:"closed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Data.Closed != "all" {
+		t.Errorf("result wrong: %+v", env)
+	}
+}
+
+func TestRunConnectionsCLI_CloseMissingTarget(t *testing.T) {
+	var out bytes.Buffer
+	code := runConnectionsCLI(&out, &out, []string{"close", "--json"}, "http://x", "")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for missing close target")
+	}
+	s := out.String()
+	if !strings.Contains(s, "usage") && !strings.Contains(s, "id") && !strings.Contains(s, "all") {
+		t.Errorf("error should mention usage/id/all: %s", s)
+	}
+}
+
+func TestRunConnectionsCLI_CloseError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runConnectionsCLI(&out, &out, []string{"close", "conn-1", "--json"}, srv.URL, "")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on server error")
+	}
+	var env struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if env.OK {
+		t.Errorf("should be ok=false")
+	}
+	if !strings.Contains(env.Error, "close") {
+		t.Errorf("error should mention close: %q", env.Error)
+	}
+}
+
+func TestRunConnectionsCLI_CloseHuman(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runConnectionsCLI(&out, &out, []string{"close", "conn-1"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(out.String(), "conn-1") {
+		t.Errorf("human output should mention conn-1: %s", out.String())
+	}
+}

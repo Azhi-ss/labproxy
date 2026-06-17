@@ -71,9 +71,9 @@
   - 验收：`client_test.go` 用 httptest mock 验证方法、URL、状态码。
   - commit: 本任务（client.go CloseConnection/CloseAllConnections）
 
-- [ ] **T2.2** CLI `labproxy connections close <id|all>`
+- [x] **T2.2** CLI `labproxy connections close <id|all>`
   - 验收：`close all`、`close <id>` 双路径；`--json` 返回操作结果；错误明确。
-  - commit: -
+  - commit: 本任务（proxy_cli.go connections close 子动作）
 
 - [ ] **T2.3** TUI 连接视图支持断连快捷键
   - 连接列表项可选中，`d` 关闭当前、`D` 关闭全部，带确认。

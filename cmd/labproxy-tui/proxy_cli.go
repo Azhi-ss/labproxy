@@ -77,7 +77,14 @@ func runProxiesCLI(stdout, stderr io.Writer, args []string, endpoint, secret str
 }
 
 // runConnectionsCLI 实现 `labproxy-tui connections`：列出当前连接。
+// 子动作 `close <id|all>`：关闭单条或全部连接。
 func runConnectionsCLI(stdout, stderr io.Writer, args []string, endpoint, secret string) int {
+	// 识别 close 子动作（首个非 flag 参数）
+	rest := stripJSONFlag(args)
+	if len(rest) > 0 && rest[0] == "close" {
+		return runConnectionsClose(stdout, stderr, args, endpoint, secret)
+	}
+
 	jsonOut := cli.IsJSONFlag(args)
 	if endpoint == "" {
 		fmt.Fprintln(stderr, "error: --endpoint is required")
@@ -111,6 +118,82 @@ func runConnectionsCLI(stdout, stderr io.Writer, args []string, endpoint, secret
 		fmt.Fprintf(stdout, "  %s  %s/%s  %s  chains=%v\n", c.ID, c.Metadata.Network, host, c.Rule, c.Chains)
 	}
 	return 0
+}
+
+// runConnectionsClose 实现 `connections close <id|all>`。
+func runConnectionsClose(stdout, stderr io.Writer, args []string, endpoint, secret string) int {
+	jsonOut := cli.IsJSONFlag(args)
+	// 取 close 之后的第一个非 flag 参数作为目标
+	target := ""
+	seenClose := false
+	for _, a := range args {
+		if a == "--json" || strings.HasPrefix(a, "--json=") {
+			continue
+		}
+		if !seenClose {
+			if a == "close" {
+				seenClose = true
+			}
+			continue
+		}
+		if a == "" {
+			continue
+		}
+		target = a
+		break
+	}
+
+	if target == "" {
+		msg := "usage: labproxy connections close <id|all> [--json]"
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: msg})
+		} else {
+			fmt.Fprintln(stderr, msg)
+		}
+		return 2
+	}
+	if endpoint == "" {
+		fmt.Fprintln(stderr, "error: --endpoint is required")
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := proxy.NewClient(endpoint, secret)
+
+	var err error
+	if target == "all" {
+		err = client.CloseAllConnections(ctx)
+	} else {
+		err = client.CloseConnection(ctx, target)
+	}
+	if err != nil {
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: err.Error()})
+			return 1
+		}
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	if jsonOut {
+		_ = cli.PrintJSON(stdout, cli.Envelope{OK: true, Data: map[string]string{"closed": target}})
+		return 0
+	}
+	fmt.Fprintf(stdout, "已关闭连接: %s\n", target)
+	return 0
+}
+
+// stripJSONFlag 返回去掉 --json 后的参数列表（保留其他参数顺序）。
+func stripJSONFlag(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--json" || strings.HasPrefix(a, "--json=") {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // runDelayCLI 实现 `labproxy-tui delay <name>`：测单节点延迟。

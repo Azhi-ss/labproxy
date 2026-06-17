@@ -1502,6 +1502,7 @@ Commands:
     tui                     交互式终端界面（TUI）
     proxies                 列出代理分组与节点 [--json]
     connections             列出当前连接 [--json]
+    connections close <id|all>  关闭连接 [--json]
     delay     <name>        测节点延迟 [--json]
     ui                      Web 控制台地址
     proxy    [on|off|status]       系统代理环境变量
