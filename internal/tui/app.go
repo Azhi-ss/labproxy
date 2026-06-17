@@ -19,11 +19,20 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// RulesModal is the contract for the rules modal — implemented in internal/tui/rules.
+type RulesModal interface {
+	IsOpen() bool
+	Open()
+	Update(tea.KeyMsg) bool
+	View() string
+}
+
 type Options struct {
 	Endpoint           string
 	SystemProxyEnabled bool
 	MixinConfigPath    string
 	RestartCommand     string
+	RulesModal         RulesModal
 }
 
 type App struct {
@@ -65,10 +74,11 @@ type keyMap struct {
 	SystemProxy key.Binding
 	Back        key.Binding
 	Quit        key.Binding
+	Rules       key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Rules, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
@@ -150,6 +160,7 @@ type model struct {
 	keys       keyMap
 	statusLine string
 	lastError  error
+	rulesModal RulesModal
 }
 
 type settingAction int
@@ -186,8 +197,13 @@ func newModel(client *proxy.Client, opts Options) model {
 		width:              120,
 		height:             32,
 		search:             search,
-		help:               help.New(),
-		statusLine:         T().StatusConnecting,
+		help: func() help.Model {
+			h := help.New()
+			h.Width = max(0, 120-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
+			return h
+		}(),
+		statusLine: T().StatusConnecting,
+		rulesModal: opts.RulesModal,
 		keys: keyMap{
 			Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", T().HelpMoveUp)),
 			Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", T().HelpMoveDown)),
@@ -202,6 +218,7 @@ func newModel(client *proxy.Client, opts Options) model {
 			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", T().HelpToggleProxyPref)),
 			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
+			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
 		},
 	}
 }
@@ -216,6 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, msg.Width)
 		m.height = max(1, msg.Height)
 		m.search.Width = min(28, max(12, m.width/4))
+		m.help.Width = max(0, m.width-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
 		m.rebuildGroups()
 		return m, nil
 	case tickMsg:
@@ -255,6 +273,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingsMode = false
 		return m, nil
 	case tea.KeyMsg:
+		if m.rulesModal != nil && m.rulesModal.IsOpen() {
+			if m.rulesModal.Update(msg) {
+				return m, nil
+			}
+		}
 		if m.searchMode {
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
@@ -334,6 +357,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.delayRefreshCmd()
+		case key.Matches(msg, m.keys.Rules):
+			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
+				m.rulesModal.Open()
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Select):
 			switch m.focus {
 			case focusGroups:
