@@ -12,6 +12,10 @@ import (
 )
 
 func runRulesCLI(stdout, stderr io.Writer, args []string, mixinPath string) int {
+	// Allow --mixin-config to appear after `rules` (flag.Parse stops at the
+	// first non-flag arg, so a trailing --mixin-config would not populate the
+	// global flag). Extract it here and strip it from args before dispatch.
+	args, mixinPath = extractMixinFlag(args, mixinPath)
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: labproxy-tui rules <subcommand> [...]")
 		return 1
@@ -54,6 +58,30 @@ func runRulesCLI(stdout, stderr io.Writer, args []string, mixinPath string) int 
 		fmt.Fprintf(stderr, "unknown subcommand %q\n", sub)
 		return 1
 	}
+}
+
+// extractMixinFlag scans args for --mixin-config=PATH or --mixin-config PATH,
+// returning the remaining args (with the flag removed) and the resolved path.
+// A flag found here overrides the caller-provided mixinPath.
+func extractMixinFlag(args []string, mixinPath string) ([]string, string) {
+	const flagName = "--mixin-config"
+	out := make([]string, 0, len(args))
+	resolved := mixinPath
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == flagName:
+			if i+1 < len(args) {
+				resolved = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, flagName+"="):
+			resolved = strings.TrimPrefix(a, flagName+"=")
+		default:
+			out = append(out, a)
+		}
+	}
+	return out, resolved
 }
 
 func cliListRules(w io.Writer, s *rules.Store, args []string) int {
