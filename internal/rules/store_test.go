@@ -54,3 +54,31 @@ func TestStore_LoadRules_PreservesEnabled(t *testing.T) {
 		t.Error("rule 2 should be enabled")
 	}
 }
+
+func TestStore_SaveRules_AtomicAndBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mixin.yaml")
+	original := `mode: rule
+rules:
+  - DOMAIN,foo.com,DIRECT
+`
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := NewStore(path)
+	rules := []Rule{{Type: TypeDomainSuffix, Payload: "x.com", Proxy: "PROXY", Enabled: true}}
+	if err := s.SaveRules(rules); err != nil {
+		t.Fatal(err)
+	}
+	rules2, err := s.LoadRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules2) != 1 || rules2[0].Payload != "x.com" {
+		t.Errorf("unexpected load result: %+v", rules2)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, "mixin.yaml.bak.*"))
+	if len(matches) == 0 {
+		t.Error("expected backup file")
+	}
+}

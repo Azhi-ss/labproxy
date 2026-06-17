@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -100,4 +101,104 @@ func (s *Store) backup() (string, error) {
 		return "", err
 	}
 	return dst, nil
+}
+
+func (s *Store) SaveRules(rules []Rule) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveRules(rules)
+}
+
+func (s *Store) saveRules(rules []Rule) error {
+	if _, err := s.backup(); err != nil {
+		return fmt.Errorf("backup: %w", err)
+	}
+	original, err := os.ReadFile(s.Path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	content := string(original)
+	newBlock := renderRulesBlock(rules)
+	content = replaceRulesBlock(content, newBlock)
+
+	tmp := s.Path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, s.Path); err != nil {
+		return err
+	}
+	return s.rotateBackups(5)
+}
+
+func (s *Store) rotateBackups(keep int) error {
+	matches, err := filepath.Glob(s.Path + ".bak.*")
+	if err != nil {
+		return err
+	}
+	if len(matches) <= keep {
+		return nil
+	}
+	type kv struct {
+		path string
+		ts   string
+	}
+	var backups []kv
+	for _, m := range matches {
+		base := filepath.Base(m)
+		if idx := strings.Index(base, ".bak."); idx >= 0 {
+			backups = append(backups, kv{m, base[idx+5:]})
+		}
+	}
+	for i := 0; i < len(backups)-keep; i++ {
+		_ = os.Remove(backups[i].path)
+	}
+	return nil
+}
+
+func renderRulesBlock(rules []Rule) string {
+	if len(rules) == 0 {
+		return "rules: []\n"
+	}
+	var b strings.Builder
+	b.WriteString("rules:\n")
+	for _, r := range rules {
+		line := r.String()
+		if !r.Enabled {
+			b.WriteString("  # - ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		} else {
+			b.WriteString("  - ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+func replaceRulesBlock(content, newBlock string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	inRules := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inRules && trimmed == "rules:" {
+			out = append(out, strings.Split(newBlock, "\n")...)
+			inRules = true
+			continue
+		}
+		if inRules {
+			if trimmed != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(trimmed, ":") {
+				inRules = false
+			} else {
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+	if !inRules {
+		out = append(out, strings.Split(newBlock, "\n")...)
+	}
+	return strings.Join(out, "\n")
 }
