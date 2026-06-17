@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -586,5 +587,97 @@ func TestCloseAllConnections_WithSecret(t *testing.T) {
 	ctx := context.Background()
 	if err := client.CloseAllConnections(ctx); err != nil {
 		t.Fatalf("CloseAllConnections() error: %v", err)
+	}
+}
+
+func TestDelayGroup(t *testing.T) {
+	// 组 GLOBAL 含 Node-A/Node-B/Node-C；C 故意返回 500（失败）
+	hits := make(map[string]int)
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /proxies/<name>/delay
+		parts := strings.Split(r.URL.Path, "/")
+		var name string
+		if len(parts) >= 3 {
+			name = parts[2]
+		}
+		mu.Lock()
+		hits[name]++
+		mu.Unlock()
+
+		if name == "Node-C" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		delay := 0
+		switch name {
+		case "Node-A":
+			delay = 50
+		case "Node-B":
+			delay = 120
+		}
+		json.NewEncoder(w).Encode(map[string]int{"delay": delay})
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	ctx := context.Background()
+	group := Proxy{Name: "GLOBAL", Type: "Selector", All: []string{"Node-A", "Node-B", "Node-C"}}
+
+	result, err := client.DelayGroup(ctx, group, 5*time.Second)
+	if err != nil {
+		t.Fatalf("DelayGroup() error: %v", err)
+	}
+	if result["Node-A"] != 50 {
+		t.Errorf("Node-A delay=%d want 50", result["Node-A"])
+	}
+	if result["Node-B"] != 120 {
+		t.Errorf("Node-B delay=%d want 120", result["Node-B"])
+	}
+	// 失败节点应有失败标记（-1）
+	if result["Node-C"] != -1 {
+		t.Errorf("Node-C delay=%d want -1 (failed)", result["Node-C"])
+	}
+
+	// 确认三个节点都被测到（并发）
+	mu.Lock()
+	if len(hits) != 3 {
+		t.Errorf("expected 3 distinct nodes tested, got %d: %v", len(hits), hits)
+	}
+	mu.Unlock()
+}
+
+func TestDelayGroup_EmptyGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("server should not be called for empty group")
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	group := Proxy{Name: "GLOBAL", Type: "Selector", All: nil}
+	result, err := client.DelayGroup(context.Background(), group, 5*time.Second)
+	if err != nil {
+		t.Fatalf("DelayGroup() error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %v", result)
+	}
+}
+
+func TestDelayGroup_AllFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	group := Proxy{Name: "G", Type: "Selector", All: []string{"A", "B"}}
+	result, err := client.DelayGroup(context.Background(), group, 2*time.Second)
+	// 全部失败不应返回 error，而是每个节点标记 -1
+	if err != nil {
+		t.Fatalf("DelayGroup() should not error on all-fail: %v", err)
+	}
+	if result["A"] != -1 || result["B"] != -1 {
+		t.Errorf("all-fail should mark -1: %+v", result)
 	}
 }

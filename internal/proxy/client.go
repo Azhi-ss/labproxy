@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,6 +106,35 @@ func (c *Client) Delay(ctx context.Context, proxyName string, timeout time.Durat
 		return 0, fmt.Errorf("decode delay response: %w", err)
 	}
 	return out.Delay, nil
+}
+
+// DelayGroup 并发测试一个代理组内所有节点的延迟。
+// 返回 map[name]int；失败或超时的节点记为 -1，不阻断整体。
+// 并发安全（用 sync.Mutex 保护 map 写入）。
+func (c *Client) DelayGroup(ctx context.Context, group Proxy, timeout time.Duration) (map[string]int, error) {
+	result := make(map[string]int)
+	if len(group.All) == 0 {
+		return result, nil
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, name := range group.All {
+		wg.Add(1)
+		go func(n string) {
+			defer wg.Done()
+			delay, err := c.Delay(ctx, n, timeout)
+			val := delay
+			if err != nil {
+				val = -1
+			}
+			mu.Lock()
+			result[n] = val
+			mu.Unlock()
+		}(name)
+	}
+	wg.Wait()
+	return result, nil
 }
 
 func (c *Client) SwitchProxy(ctx context.Context, groupName, proxyName string) error {

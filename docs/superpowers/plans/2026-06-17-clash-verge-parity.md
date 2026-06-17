@@ -82,10 +82,10 @@
 
 ### Phase 3：批量测速
 
-- [ ] **T3.1** client 新增 `DelayGroup(groupName, timeout)` 并发测全组
+- [x] **T3.1** client 新增 `DelayGroup(groupName, timeout)` 并发测全组
   - 复用 `Delay()`，`errgroup` 并发，返回 `map[name]int`。
   - 验收：并发安全测试（`-race`）、超时处理、部分失败不阻断。
-  - commit: -
+  - commit: 本任务（client.go DelayGroup 并发测全组）
 
 - [ ] **T3.2** CLI `labproxy test [group]` 批量测速
   - 默认测当前组，输出按延迟排序表格；`--json` 输出 map。
