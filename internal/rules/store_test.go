@@ -82,3 +82,27 @@ rules:
 		t.Error("expected backup file")
 	}
 }
+
+func TestStore_Providers_Roundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mixin.yaml")
+	yaml := `rule-providers:
+  google:
+    type: http
+    behavior: domain
+    url: "https://example.com/g.yaml"
+    path: ./providers/g.yaml
+    interval: 86400
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := NewStore(path)
+	providers, err := s.LoadProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0].Name != "google" || providers[0].Interval != 86400 {
+		t.Errorf("unexpected providers: %+v", providers)
+	}
+}

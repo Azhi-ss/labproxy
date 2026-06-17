@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Store struct {
@@ -198,6 +200,107 @@ func replaceRulesBlock(content, newBlock string) string {
 		out = append(out, line)
 	}
 	if !inRules {
+		out = append(out, strings.Split(newBlock, "\n")...)
+	}
+	return strings.Join(out, "\n")
+}
+
+// --- Providers ---
+
+func (s *Store) LoadProviders() ([]Provider, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadProviders()
+}
+
+func (s *Store) loadProviders() ([]Provider, error) {
+	data, err := os.ReadFile(s.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var raw struct {
+		RuleProviders map[string]struct {
+			Type     string `yaml:"type"`
+			Behavior string `yaml:"behavior"`
+			URL      string `yaml:"url"`
+			Path     string `yaml:"path"`
+			Interval int    `yaml:"interval"`
+		} `yaml:"rule-providers"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	var providers []Provider
+	for name, p := range raw.RuleProviders {
+		providers = append(providers, Provider{
+			Name: name, Type: p.Type, Behavior: p.Behavior,
+			URL: p.URL, Path: p.Path, Interval: p.Interval,
+		})
+	}
+	return providers, nil
+}
+
+func (s *Store) SaveProviders(providers []Provider) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.backup(); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(s.Path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	content := string(data)
+	rpMap := make(map[string]Provider)
+	for _, p := range providers {
+		rpMap[p.Name] = p
+	}
+	var rendered strings.Builder
+	rendered.WriteString("rule-providers:\n")
+	for name, p := range rpMap {
+		rendered.WriteString(fmt.Sprintf("  %s:\n", name))
+		rendered.WriteString(fmt.Sprintf("    type: %s\n", p.Type))
+		rendered.WriteString(fmt.Sprintf("    behavior: %s\n", p.Behavior))
+		if p.URL != "" {
+			rendered.WriteString(fmt.Sprintf("    url: %q\n", p.URL))
+		}
+		rendered.WriteString(fmt.Sprintf("    path: %s\n", p.Path))
+		if p.Interval > 0 {
+			rendered.WriteString(fmt.Sprintf("    interval: %d\n", p.Interval))
+		}
+	}
+	content = replaceProviderBlock(content, rendered.String())
+	tmp := s.Path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.Path)
+}
+
+func replaceProviderBlock(content, newBlock string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	inBlock := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inBlock && trimmed == "rule-providers:" {
+			out = append(out, strings.Split(newBlock, "\n")...)
+			inBlock = true
+			continue
+		}
+		if inBlock {
+			if trimmed != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+				inBlock = false
+			} else {
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+	if !inBlock {
 		out = append(out, strings.Split(newBlock, "\n")...)
 	}
 	return strings.Join(out, "\n")
