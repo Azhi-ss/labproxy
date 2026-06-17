@@ -21,6 +21,10 @@ func main() {
 	)
 	flag.Parse()
 
+	if len(os.Args) >= 2 && os.Args[1] == "rules" {
+		os.Exit(runRulesCLI(os.Stdout, os.Stderr, os.Args[2:], *mixinConfig))
+	}
+
 	if *endpoint == "" {
 		fmt.Fprintln(os.Stderr, "missing required --endpoint")
 		os.Exit(1)
