@@ -246,6 +246,12 @@ func (s *Store) loadProviders() ([]Provider, error) {
 func (s *Store) SaveProviders(providers []Provider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.saveProviders(providers)
+}
+
+// saveProviders performs the write without acquiring s.mu, so it can be called
+// from methods that already hold the lock (mirrors saveRules/SaveRules).
+func (s *Store) saveProviders(providers []Provider) error {
 	if _, err := s.backup(); err != nil {
 		return err
 	}
