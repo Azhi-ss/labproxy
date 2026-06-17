@@ -54,10 +54,10 @@
   - 文件：`internal/cli/output.go`、`internal/cli/output_test.go`
   - commit: see below (本任务)
 
-- [ ] **T1.2** `status --json` 输出结构化运行状态
+- [x] **T1.2** `status --json` 输出结构化运行状态
   - 字段：`running bool, pid int, proxy_port, ui_port, dns_port, mode, system_proxy bool, uptime`。
   - 验收：人读输出不变；`--json` 输出合法 JSON 且字段齐全。
-  - commit: -
+  - commit: 本任务（status 子命令 + bash 转发）
 
 - [ ] **T1.3** `proxies --json` / `connections --json` / `delay --json` 输出
   - 新增 `labproxy proxies`、`labproxy connections`、`labproxy delay <name>` CLI（薄封装 client）。

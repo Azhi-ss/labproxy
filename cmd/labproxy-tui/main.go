@@ -26,6 +26,11 @@ func main() {
 		os.Exit(runRulesCLI(os.Stdout, os.Stderr, os.Args[2:], *mixinConfig))
 	}
 
+	if len(os.Args) >= 2 && os.Args[1] == "status" {
+		home := os.Getenv("HOME")
+		os.Exit(runStatusCLI(os.Stdout, os.Stderr, os.Args[2:], home, *endpoint, *secret))
+	}
+
 	if *endpoint == "" {
 		fmt.Fprintln(os.Stderr, "missing required --endpoint")
 		os.Exit(1)

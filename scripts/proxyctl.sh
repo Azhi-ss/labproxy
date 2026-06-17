@@ -1391,6 +1391,20 @@ function labproxyctl() {
         ;;
     status)
         shift
+        # --json 转发到 Go 实现的结构化状态查询（agent-native）
+        for arg in "$@"; do
+            case "$arg" in
+            --json|--json=true)
+                _get_ui_port 2>/dev/null || true
+                local _status_endpoint=""
+                [ -n "${UI_PORT:-}" ] && _status_endpoint="http://127.0.0.1:${UI_PORT}"
+                exec "$LABPROXY_TUI_BIN" status \
+                    ${_status_endpoint:+--endpoint "$_status_endpoint"} \
+                    ${SECRET:+--secret "$SECRET"} \
+                    "$@"
+                ;;
+            esac
+        done
         labproxystatus "$@"
         ;;
     proxy)
