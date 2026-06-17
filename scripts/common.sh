@@ -1337,6 +1337,112 @@ _stop_convert() {
     pkill -9 -f "$BIN_SUBCONVERTER" >&/dev/null || true
 }
 
+# 校验 LABPROXY_HOME_DIR 删除目标是否安全。
+# 防止 $HOME 为空或路径异常时 rm -rf 误删非预期目录。
+# 安全条件：非空、绝对路径、严格位于 $HOME 之下、不等于 $HOME 本身、非根路径。
+# 返回 0=安全，1=危险（拒绝删除）。
+# 规范化路径：解析 .. 与 . 段、去尾随斜杠。
+# 使用子 shell + cd 以解析符号链接与 .. 到真实物理路径；失败则原样返回。
+_normalize_path() {
+    local p="${1:-}"
+    [ -n "$p" ] || return 1
+    case "$p" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+
+    # 优先用物理解析（解析符号链接），失败则做纯词法规范化
+    local resolved
+    resolved=$(
+        cd -P -- "$p" 2>/dev/null && pwd -P
+    ) && [ -n "$resolved" ] && { printf '%s\n' "$resolved"; return 0; }
+
+    # 词法兜底：逐段消除 .. 与 .
+    local out=""
+    while [ -n "$p" ]; do
+        local seg="${p%%/*}"
+        local rest="${p#"$seg"}"
+        rest="${rest#/}"
+        if [ "$seg" = ".." ]; then
+            out="${out%/*}"
+            [ -z "$out" ] && out=""
+        elif [ "$seg" = "." ] || [ -z "$seg" ]; then
+            :
+        else
+            out="${out:+$out/}$seg"
+        fi
+        p="$rest"
+    done
+    [ -n "$out" ] || return 1
+    printf '/%s\n' "$out"
+}
+
+# 校验 LABPROXY_HOME_DIR 删除目标是否安全。
+# 防止 $HOME 为空或路径异常时 rm -rf 误删非预期目录。
+# 安全条件：非空、绝对路径、规范化后严格位于 $HOME 之下、不等于 $HOME 本身、非根路径。
+# 返回 0=安全，1=危险（拒绝删除）。
+_labproxy_home_is_safe() {
+    local target="${LABPROXY_HOME_DIR:-}"
+    local home="${HOME:-}"
+
+    [ -n "$target" ] || return 1
+    [ -n "$home" ] || return 1
+
+    # 必须是绝对路径
+    case "$target" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+
+    # 规范化后再校验，防止 .. / 符号链接绕过前缀检查
+    local norm_target norm_home
+    norm_target=$(_normalize_path "$target") || return 1
+    norm_home=$(_normalize_path "$home") || return 1
+
+    # 拒绝根路径与 HOME 本身
+    [ "$norm_target" != "/" ] || return 1
+    [ "$norm_target" != "$norm_home" ] || return 1
+
+    # 必须严格位于规范化的 $HOME 之下
+    case "$norm_target" in
+        "${norm_home}/"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# 卸载时兜底清理残留进程：subconverter 与内核。
+# install 中断或异常退出可能残留 subconverter；此处确保卸载干净。
+_cleanup_residual_processes() {
+    # 停止 subconverter 残留（与 _stop_convert 一致，但容忍其不存在）
+    if [ -n "${BIN_SUBCONVERTER:-}" ]; then
+        pkill -9 -f "$BIN_SUBCONVERTER" 2>/dev/null || true
+    fi
+
+    # 通过 PID 文件优雅停止内核；失败则兜底按内核二进制名清理
+    local pid_file="${LABPROXY_HOME_DIR}/config/labproxy.pid"
+    if [ -f "$pid_file" ]; then
+        local pid
+        pid=$(cat "$pid_file" 2>/dev/null || true)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            local count=0
+            while kill -0 "$pid" 2>/dev/null && [ $count -lt 5 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$pid_file"
+    fi
+
+    # 兜底：按内核运行特征清理（仅当内核二进制名已知）
+    if [ -n "${BIN_KERNEL_NAME:-}" ]; then
+        pkill -9 -f "$BIN_KERNEL_NAME -d ${LABPROXY_HOME_DIR}" 2>/dev/null || true
+    fi
+
+    return 0
+}
+
 # ---- Multi-subscription management ----
 
 # Ensure subscriptions YAML file exists
