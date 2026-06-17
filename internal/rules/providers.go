@@ -65,7 +65,7 @@ func (s *Store) DeleteProvider(name string) (Diff, error) {
 	if err != nil {
 		return Diff{}, err
 	}
-	out := providers[:0]
+	out := make([]Provider, 0, len(providers))
 	found := false
 	for _, p := range providers {
 		if p.Name == name {

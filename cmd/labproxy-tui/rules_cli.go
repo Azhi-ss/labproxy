@@ -140,13 +140,20 @@ func cliAddRule(w, e io.Writer, s *rules.Store, args []string) int {
 		return 1
 	}
 	r := rules.Rule{Type: rules.RuleType(rType), Payload: payload, Proxy: proxy, NoResolve: noResolve, Enabled: true}
+	if err := r.Validate(); err != nil {
+		fmt.Fprintln(e, err)
+		return 1
+	}
 	if at >= 0 {
 		existing, _ := s.LoadRules()
 		if at > len(existing) {
 			at = len(existing)
 		}
-		existing = append(existing[:at], append([]rules.Rule{r}, existing[at:]...)...)
-		if err := s.SaveRules(existing); err != nil {
+		out := make([]rules.Rule, 0, len(existing)+1)
+		out = append(out, existing[:at]...)
+		out = append(out, r)
+		out = append(out, existing[at:]...)
+		if err := s.SaveRules(out); err != nil {
 			fmt.Fprintln(e, err)
 			return 2
 		}
@@ -187,11 +194,15 @@ func cliToggleRule(w io.Writer, s *rules.Store, args []string, wantEnabled bool)
 	if err != nil {
 		return 1
 	}
-	rules_list, _ := s.LoadRules()
-	if idx < 0 || idx >= len(rules_list) {
+	rulesList, err := s.LoadRules()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if idx < 0 || idx >= len(rulesList) {
 		return 1
 	}
-	if rules_list[idx].Enabled != wantEnabled {
+	if rulesList[idx].Enabled != wantEnabled {
 		if _, err := s.ToggleRule(idx); err != nil {
 			return 2
 		}

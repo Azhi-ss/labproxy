@@ -45,6 +45,9 @@ func (s *Store) Import(src ImportSource, mode string) (Diff, error) {
 	if err := s.saveRules(merged); err != nil {
 		return Diff{}, err
 	}
+	if mode == "replace" {
+		return Diff{Added: newRules, Removed: existing}, nil
+	}
 	return Diff{Added: newRules}, nil
 }
 

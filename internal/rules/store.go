@@ -273,7 +273,7 @@ func (s *Store) saveProviders(providers []Provider) error {
 		if p.URL != "" {
 			rendered.WriteString(fmt.Sprintf("    url: %q\n", p.URL))
 		}
-		rendered.WriteString(fmt.Sprintf("    path: %s\n", p.Path))
+		rendered.WriteString(fmt.Sprintf("    path: %q\n", p.Path))
 		if p.Interval > 0 {
 			rendered.WriteString(fmt.Sprintf("    interval: %d\n", p.Interval))
 		}
