@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1569,5 +1570,125 @@ func TestUpdate_CloseConnectionOnlyWhenFocused(t *testing.T) {
 	um := updated.(model)
 	if um.connConfirmClose != "" {
 		t.Errorf("should not enter confirm when not focused on connections: %q", um.connConfirmClose)
+	}
+}
+
+func TestUpdate_TestGroupKeyTriggersBatch(t *testing.T) {
+	tested := make(map[string]bool)
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/delay") {
+			parts := strings.Split(r.URL.Path, "/")
+			name := parts[2]
+			mu.Lock()
+			tested[name] = true
+			mu.Unlock()
+			if name == "Node-B" {
+				http.Error(w, "timeout", http.StatusGatewayTimeout)
+				return
+			}
+			fmt.Fprintf(w, `{"delay":%d}`, 80)
+			return
+		}
+		switch r.URL.Path {
+		case "/version":
+			fmt.Fprint(w, `{"version":"t","meta":true}`)
+		case "/configs":
+			fmt.Fprint(w, `{"mode":"rule","mixed-port":7890}`)
+		case "/proxies":
+			fmt.Fprint(w, `{"proxies":{"GLOBAL":{"name":"GLOBAL","type":"Selector","now":"Node-A","all":["Node-A","Node-B"]},"Node-A":{"name":"Node-A","type":"Shadowsocks"},"Node-B":{"name":"Node-B","type":"Shadowsocks"}}}`)
+		case "/connections":
+			fmt.Fprint(w, `{"downloadTotal":0,"uploadTotal":0,"connections":[]}`)
+		case "/traffic":
+			fmt.Fprint(w, `{"up":0,"down":0}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+
+	client := proxy.NewClient(srv.URL, "")
+	m := newModel(client, Options{Endpoint: srv.URL})
+	m.focus = focusGroups
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"GLOBAL": {Name: "GLOBAL", Type: "Selector", Now: "Node-A", All: []string{"Node-A", "Node-B"}},
+		"Node-A": {Name: "Node-A", Type: "Shadowsocks"},
+		"Node-B": {Name: "Node-B", Type: "Shadowsocks"},
+	}}
+	m.rebuildGroups()
+
+	// 按 T 触发批量测速
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("T")})
+	if cmd == nil {
+		t.Fatal("expected cmd returned for T key")
+	}
+	msg := cmd()
+	_ = updated
+
+	// 验证两个节点都被测
+	mu.Lock()
+	gotA, gotB := tested["Node-A"], tested["Node-B"]
+	mu.Unlock()
+	if !gotA || !gotB {
+		t.Errorf("expected both nodes tested, got A=%v B=%v", gotA, gotB)
+	}
+
+	// msg 应为 testGroupResultMsg，含结果
+	tgr, ok := msg.(testGroupResultMsg)
+	if !ok {
+		t.Fatalf("expected testGroupResultMsg, got %T", msg)
+	}
+	if tgr.results["Node-A"] != 80 {
+		t.Errorf("Node-A delay=%d want 80", tgr.results["Node-A"])
+	}
+	if tgr.results["Node-B"] != -1 {
+		t.Errorf("Node-B (failed) should be -1, got %d", tgr.results["Node-B"])
+	}
+}
+
+func TestPlainDelayLabel_Timeout(t *testing.T) {
+	if got := plainDelayLabel(-1); got != "timeout" {
+		t.Errorf("plainDelayLabel(-1)=%q want timeout", got)
+	}
+	if got := plainDelayLabel(0); got != "--" {
+		t.Errorf("plainDelayLabel(0)=%q want --", got)
+	}
+	if got := plainDelayLabel(80); got != "80ms" {
+		t.Errorf("plainDelayLabel(80)=%q want 80ms", got)
+	}
+}
+
+func TestUpdate_TestGroupResultUpdatesDelay(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.rawProxies = proxy.ProxiesResponse{Proxies: map[string]proxy.Proxy{
+		"GLOBAL": {Name: "GLOBAL", Type: "Selector", All: []string{"Node-A", "Node-B"}},
+	}}
+	m.rebuildGroups()
+
+	msg := testGroupResultMsg{
+		groupName: "GLOBAL",
+		results:   map[string]int{"Node-A": 80, "Node-B": -1},
+	}
+	updated, _ := m.Update(msg)
+	um := updated.(model)
+	g := um.currentGroup()
+	if g == nil {
+		t.Fatal("expected current group")
+	}
+	var aDelay, bDelay int
+	for _, opt := range g.Options {
+		if opt.Name == "Node-A" {
+			aDelay = opt.DelayMS
+		}
+		if opt.Name == "Node-B" {
+			bDelay = opt.DelayMS
+		}
+	}
+	if aDelay != 80 {
+		t.Errorf("Node-A DelayMS=%d want 80", aDelay)
+	}
+	if bDelay != -1 {
+		t.Errorf("Node-B DelayMS=%d want -1", bDelay)
 	}
 }

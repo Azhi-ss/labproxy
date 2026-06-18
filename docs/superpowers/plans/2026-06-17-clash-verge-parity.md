@@ -92,10 +92,10 @@
   - 验收：表格 + JSON 双形态；空组/失败组优雅处理。
   - commit: 本任务（proxy_cli.go runTestCLI + main/proxyctl 接线）
 
-- [ ] **T3.3** TUI 分组视图批量测速
+- [x] **T3.3** TUI 分组视图批量测速
   - `T` 测当前组全部节点，延迟列实时刷新，超时显示 `timeout`。
   - 验收：TUI 测试覆盖 `T` 键 → 批量刷新。
-  - commit: -
+  - commit: 本任务（app.go T键+testGroupCmd+applyTestGroupResult+i18n）
 
 ### Phase 4：日志实时流
 

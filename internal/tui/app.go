@@ -76,6 +76,7 @@ type keyMap struct {
 	Back        key.Binding
 	Quit        key.Binding
 	Rules       key.Binding
+	TestGroup   key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -124,6 +125,13 @@ type switchResultMsg struct {
 type settingsResultMsg struct {
 	status string
 	data   refreshMsg
+}
+
+// testGroupResultMsg 携带批量测速结果（map[name]int，-1=失败）。
+// 直接写入 OptionView.DelayMS，不依赖 mihomo history，支持 timeout 显示。
+type testGroupResultMsg struct {
+	groupName string
+	results   map[string]int
 }
 
 type model struct {
@@ -223,6 +231,7 @@ func newModel(client *proxy.Client, opts Options) model {
 			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
 			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
+			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
 		},
 	}
 }
@@ -256,6 +265,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyState(msg.data)
 		m.statusLine = msg.status
 		m.lastError = nil
+		return m, nil
+	case testGroupResultMsg:
+		m.applyTestGroupResult(msg)
 		return m, nil
 	case settingsResultMsg:
 		m.applyState(msg.data)
@@ -369,6 +381,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.delayRefreshCmd()
+		case key.Matches(msg, m.keys.TestGroup):
+			return m, m.testGroupCmd()
 		case key.Matches(msg, m.keys.Rules):
 			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
 				m.rulesModal.Open()
@@ -417,6 +431,24 @@ func (m *model) applyState(state refreshMsg) {
 	m.tunEnabled = state.tunEnabled
 	m.rebuildGroups()
 	m.clampIndices()
+}
+
+// applyTestGroupResult 将批量测速结果写入对应组的 OptionView.DelayMS。
+// 失败节点记 -1（渲染为 timeout）；未测节点保持原值。
+func (m *model) applyTestGroupResult(msg testGroupResultMsg) {
+	for i := range m.groups {
+		if m.groups[i].Name != msg.groupName {
+			continue
+		}
+		for j := range m.groups[i].Options {
+			name := m.groups[i].Options[j].Name
+			if delay, ok := msg.results[name]; ok {
+				m.groups[i].Options[j].DelayMS = delay
+			}
+		}
+		break
+	}
+	m.statusLine = fmt.Sprintf(T().TestGroupDoneFmt, msg.groupName)
 }
 
 func (m *model) toggleFocus() {
@@ -641,6 +673,32 @@ func (m model) delayRefreshCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return state
+	}
+}
+
+// testGroupCmd 批量测当前组全部节点延迟，返回精确结果（含 -1 失败标记）。
+// 与 delayRefreshCmd 的区别：直接拿 DelayGroup 结果渲染，不依赖 mihomo history，
+// 从而能显示 timeout（而非 --）。
+func (m model) testGroupCmd() tea.Cmd {
+	group := m.currentGroup()
+	if group == nil || len(group.Options) == 0 {
+		return nil
+	}
+	// 取原始 Proxy（含 All）以调用 DelayGroup
+	proxyGroup, ok := m.rawProxies.Proxies[group.Name]
+	if !ok {
+		return nil
+	}
+	groupName := group.Name
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		results, err := m.client.DelayGroup(ctx, proxyGroup, 5*time.Second)
+		if err != nil {
+			return errMsg{err}
+		}
+		return testGroupResultMsg{groupName: groupName, results: results}
 	}
 }
 
@@ -1552,6 +1610,9 @@ func renderPanel(style lipgloss.Style, width, height int, content string) string
 }
 
 func plainDelayLabel(ms int) string {
+	if ms == -1 {
+		return "timeout"
+	}
 	if ms <= 0 {
 		return "--"
 	}

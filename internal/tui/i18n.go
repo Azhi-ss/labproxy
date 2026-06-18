@@ -73,6 +73,7 @@ type Dict struct {
 	FilterLabelFmt    string
 	ConnCloseAllLabel string
 	ConnClosedFmt     string
+	TestGroupDoneFmt  string
 
 	// Operation results
 	SwitchedFmt           string
@@ -177,6 +178,7 @@ var dicts = map[Language]Dict{
 		FilterLabelFmt:    "filter: %s",
 		ConnCloseAllLabel: "all",
 		ConnClosedFmt:     "closed connection: %s",
+		TestGroupDoneFmt:  "tested group: %s",
 
 		SwitchedFmt:           "switched %s \u2192 %s",
 		ModeToFmt:             "mode \u2192 %s",
@@ -272,6 +274,7 @@ var dicts = map[Language]Dict{
 		FocusConnections:  "\u7126\u70b9: \u8fde\u63a5 \u00b7 d \u5173\u95ed \u00b7 D \u5168\u90e8\u5173\u95ed",
 		ConnCloseAllLabel: "\u5168\u90e8",
 		ConnClosedFmt:     "\u5df2\u5173\u95ed\u8fde\u63a5: %s",
+		TestGroupDoneFmt:  "\u5df2\u6d4b\u901f\u7ec4: %s",
 		FilterLabelFmt:    "\u8fc7\u6ee4: %s",
 
 		SwitchedFmt:           "\u5df2\u5207\u6362 %s \u2192 %s",
