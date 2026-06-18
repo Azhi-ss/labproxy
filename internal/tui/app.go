@@ -61,6 +61,12 @@ const (
 	focusConnections
 )
 
+// maxLogEntries 是日志覆盖视图保留的最大行数，超出自动丢弃最旧条目。
+const maxLogEntries = 500
+
+// logLevels 是 l 键循环切换的日志级别顺序。
+var logLevels = []string{"info", "warning", "error", "debug"}
+
 type keyMap struct {
 	Up          key.Binding
 	Down        key.Binding
@@ -77,6 +83,7 @@ type keyMap struct {
 	Quit        key.Binding
 	Rules       key.Binding
 	TestGroup   key.Binding
+	Logs        key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -134,6 +141,11 @@ type testGroupResultMsg struct {
 	results   map[string]int
 }
 
+// logEntryMsg 携带从 mihomo /logs 流收到的单条日志。
+type logEntryMsg struct {
+	entry proxy.LogEntry
+}
+
 type model struct {
 	client             *proxy.Client
 	endpoint           string
@@ -159,6 +171,13 @@ type model struct {
 
 	connIndex        int    // 连接面板选中行
 	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
+
+	// 日志覆盖视图
+	logMode    bool               // 是否处于日志覆盖模式
+	logEntries []proxy.LogEntry   // 累积的日志条目（截断到 maxLogEntries）
+	logLevel   string             // 当前订阅级别（debug/info/warning/error）
+	logActive  bool               // 日志流是否正在订阅
+	logCancel  context.CancelFunc // 停止当前日志订阅
 
 	width  int
 	height int
@@ -232,6 +251,7 @@ func newModel(client *proxy.Client, opts Options) model {
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
 			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
 			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
+			Logs:        key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logs")),
 		},
 	}
 }
@@ -268,6 +288,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case testGroupResultMsg:
 		m.applyTestGroupResult(msg)
+		return m, nil
+	case logEntryMsg:
+		// 累积日志并截断；若仍在 logMode 则继续订阅下一条
+		m.logEntries = append(m.logEntries, msg.entry)
+		if len(m.logEntries) > maxLogEntries {
+			m.logEntries = m.logEntries[len(m.logEntries)-maxLogEntries:]
+		}
+		if m.logActive {
+			return m, m.logsCmd()
+		}
 		return m, nil
 	case settingsResultMsg:
 		m.applyState(msg.data)
@@ -313,6 +343,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.search, cmd = m.search.Update(msg)
 				m.rebuildGroups()
 				return m, cmd
+			}
+		}
+
+		// 日志覆盖模式：esc 退出、l 切级别，其它键交回主循环。
+		if m.logMode {
+			if handled, mm, mcmd := m.handleLogKey(msg); handled {
+				return mm, mcmd
 			}
 		}
 
@@ -383,6 +420,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.delayRefreshCmd()
 		case key.Matches(msg, m.keys.TestGroup):
 			return m, m.testGroupCmd()
+		case key.Matches(msg, m.keys.Logs):
+			m.logMode = true
+			m.logActive = true
+			if m.logLevel == "" {
+				m.logLevel = "info"
+			}
+			m.statusLine = T().LogOverlayHint
+			return m, m.logsCmd()
 		case key.Matches(msg, m.keys.Rules):
 			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
 				m.rulesModal.Open()
@@ -410,6 +455,10 @@ func (m model) View() string {
 
 	if m.settingsMode {
 		return m.renderSettingsOverlay()
+	}
+
+	if m.logMode {
+		return m.renderLogOverlay()
 	}
 
 	header := m.renderHeader()
@@ -702,6 +751,27 @@ func (m model) testGroupCmd() tea.Cmd {
 	}
 }
 
+// logsCmd 订阅 mihomo /logs 流，阻塞读一条返回 logEntryMsg。
+// 持续流靠 Update 收到 logEntryMsg 后再次调度 logsCmd（若仍 logActive）。
+// 退出 logMode 时 logActive=false 并调用 logCancel 停止底层 HTTP 连接。
+func (m model) logsCmd() tea.Cmd {
+	level := m.logLevel
+	if level == "" {
+		level = "info"
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.logCancel = cancel
+	ch := m.client.Logs(ctx, level)
+
+	return func() tea.Msg {
+		entry, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return logEntryMsg{entry: entry}
+	}
+}
+
 func (m model) switchProxyCmd() tea.Cmd {
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 || m.optionIndex >= len(group.Options) {
@@ -725,6 +795,57 @@ func (m model) switchProxyCmd() tea.Cmd {
 			data:   state,
 		}
 	}
+}
+
+// handleLogKey 处理日志覆盖模式按键：esc/q 退出，l 循环切换级别。
+// 切换级别会清空已累积日志并重新订阅。
+func (m model) handleLogKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
+	// esc / q 退出
+	if msg.Type == tea.KeyEsc {
+		m.stopLogStream()
+		m.logMode = false
+		m.statusLine = T().LogOverlayClosed
+		return true, m, nil
+	}
+	if msg.Type == tea.KeyRunes && string(msg.Runes) == "q" {
+		m.stopLogStream()
+		m.logMode = false
+		m.statusLine = T().LogOverlayClosed
+		return true, m, nil
+	}
+	// l 切换级别
+	if msg.Type == tea.KeyRunes && string(msg.Runes) == "l" {
+		m.logLevel = nextLogLevel(m.logLevel)
+		m.logEntries = nil
+		m.statusLine = fmt.Sprintf(T().LogLevelFmt, m.logLevel)
+		return true, m, m.logsCmd()
+	}
+	return false, m, nil
+}
+
+// stopLogStream 停止当前日志订阅并重置 active 标志。
+func (m *model) stopLogStream() {
+	m.logActive = false
+	if m.logCancel != nil {
+		m.logCancel()
+		m.logCancel = nil
+	}
+}
+
+// nextLogLevel 在 logLevels 中循环到下一个级别。
+func nextLogLevel(current string) string {
+	if current == "" {
+		current = "info"
+	}
+	for i, l := range logLevels {
+		if l == current {
+			if i+1 < len(logLevels) {
+				return logLevels[i+1]
+			}
+			return logLevels[0]
+		}
+	}
+	return logLevels[0]
 }
 
 // handleConnectionCloseKey 处理连接面板的 d/D 断连按键。
@@ -1272,6 +1393,37 @@ func (m model) renderOptionsPanel(width, height int) string {
 		height,
 	)
 	return renderPanel(style, width, height, content)
+}
+
+// renderLogOverlay 渲染日志覆盖视图：显示最近 maxLogEntries 条日志，按级别着色。
+func (m model) renderLogOverlay() string {
+	width := max(1, m.width)
+	height := max(1, m.height)
+
+	header := fmt.Sprintf(T().LogOverlayTitle, m.logLevel)
+	body := lipgloss.JoinVertical(lipgloss.Left, header, "")
+	usedHeight := lipgloss.Height(body) + 2 // 标题+空行
+	avail := height - usedHeight
+	if avail < 1 {
+		avail = 1
+	}
+
+	// 取最近 avail 条
+	entries := m.logEntries
+	if len(entries) > avail {
+		entries = entries[len(entries)-avail:]
+	}
+
+	lines := make([]string, 0, len(entries))
+	for _, e := range entries {
+		lines = append(lines, fitLine(fmt.Sprintf("[%s] %s", e.Level, e.Payload), width))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, fitLine(mutedStyle.Render(T().LogWaiting), width))
+	}
+
+	content := strings.Join(lines, "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, header, "", content)
 }
 
 func (m model) renderSettingsOverlay() string {

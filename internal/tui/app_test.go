@@ -1692,3 +1692,89 @@ func TestUpdate_TestGroupResultUpdatesDelay(t *testing.T) {
 		t.Errorf("Node-B DelayMS=%d want -1", bDelay)
 	}
 }
+
+func TestUpdate_LogOverlayToggle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/logs" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		f := w.(http.Flusher)
+		fmt.Fprintln(w, `{"type":"info","payload":"logline1"}`)
+		f.Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := proxy.NewClient(srv.URL, "")
+	m := newModel(client, Options{Endpoint: srv.URL})
+
+	// L 进入日志模式
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	um := updated.(model)
+	if !um.logMode {
+		t.Fatal("expected logMode true after L")
+	}
+	if cmd == nil {
+		t.Fatal("expected logs subscription cmd")
+	}
+
+	// 收到日志条目应追加到 logEntries
+	msg := cmd()
+	if tgr, ok := msg.(logEntryMsg); !ok || tgr.entry.Payload != "logline1" {
+		t.Fatalf("expected logEntryMsg{logline1}, got %T %+v", msg, msg)
+	}
+	updated2, _ := um.Update(msg)
+	um2 := updated2.(model)
+	if len(um2.logEntries) != 1 || um2.logEntries[0].Payload != "logline1" {
+		t.Errorf("logEntries wrong: %+v", um2.logEntries)
+	}
+}
+
+func TestUpdate_LogOverlayExit(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.logMode = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	um := updated.(model)
+	if um.logMode {
+		t.Error("expected logMode false after esc")
+	}
+}
+
+func TestUpdate_LogBufferTruncation(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.logMode = true
+
+	// 注入 600 条，应截断到 maxLogEntries
+	for i := 0; i < 600; i++ {
+		um, _ := m.Update(logEntryMsg{entry: proxy.LogEntry{Level: "info", Payload: fmt.Sprintf("p%d", i)}})
+		m = um.(model)
+	}
+	if len(m.logEntries) != maxLogEntries {
+		t.Errorf("expected %d entries after truncation, got %d", maxLogEntries, len(m.logEntries))
+	}
+	// 应保留最新的（p599 在末尾）
+	if m.logEntries[len(m.logEntries)-1].Payload != "p599" {
+		t.Errorf("expected last entry p599, got %s", m.logEntries[len(m.logEntries)-1].Payload)
+	}
+}
+
+func TestUpdate_LogLevelFilter(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.logMode = true
+	m.logLevel = "info"
+
+	// l 切换级别
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	um := updated.(model)
+	// 级别应循环到下一个
+	if um.logLevel == "info" {
+		t.Error("expected logLevel changed after l")
+	}
+}

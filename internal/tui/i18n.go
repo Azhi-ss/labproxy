@@ -74,6 +74,11 @@ type Dict struct {
 	ConnCloseAllLabel string
 	ConnClosedFmt     string
 	TestGroupDoneFmt  string
+	LogOverlayTitle   string
+	LogOverlayHint    string
+	LogOverlayClosed  string
+	LogLevelFmt       string
+	LogWaiting        string
 
 	// Operation results
 	SwitchedFmt           string
@@ -179,6 +184,11 @@ var dicts = map[Language]Dict{
 		ConnCloseAllLabel: "all",
 		ConnClosedFmt:     "closed connection: %s",
 		TestGroupDoneFmt:  "tested group: %s",
+		LogOverlayTitle:   "Logs [level: %s] — esc to close, l to change level",
+		LogOverlayHint:    "logs — esc close · l level",
+		LogOverlayClosed:  "logs closed",
+		LogLevelFmt:       "log level: %s",
+		LogWaiting:        "waiting for logs…",
 
 		SwitchedFmt:           "switched %s \u2192 %s",
 		ModeToFmt:             "mode \u2192 %s",
@@ -275,6 +285,11 @@ var dicts = map[Language]Dict{
 		ConnCloseAllLabel: "\u5168\u90e8",
 		ConnClosedFmt:     "\u5df2\u5173\u95ed\u8fde\u63a5: %s",
 		TestGroupDoneFmt:  "\u5df2\u6d4b\u901f\u7ec4: %s",
+		LogOverlayTitle:   "\u65e5\u5fd7 [\u7ea7\u522b: %s] \u2014 esc \u5173\u95ed\uff0cl \u5207\u6362\u7ea7\u522b",
+		LogOverlayHint:    "\u65e5\u5fd7 \u2014 esc \u5173\u95ed \u00b7 l \u7ea7\u522b",
+		LogOverlayClosed:  "\u65e5\u5fd7\u5df2\u5173\u95ed",
+		LogLevelFmt:       "\u65e5\u5fd7\u7ea7\u522b: %s",
+		LogWaiting:        "\u7b49\u5f85\u65e5\u5fd7\u2026",
 		FilterLabelFmt:    "\u8fc7\u6ee4: %s",
 
 		SwitchedFmt:           "\u5df2\u5207\u6362 %s \u2192 %s",

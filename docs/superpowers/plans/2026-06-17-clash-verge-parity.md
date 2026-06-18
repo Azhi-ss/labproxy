@@ -109,10 +109,10 @@
   - 验收：`-f` 可 Ctrl-C 干净退出；`--json` 每行一个 envelope。
   - commit: 本任务（proxy_cli.go runLogsCLI + main/proxyctl 接线）
 
-- [ ] **T4.3** TUI 日志视图 Tab
+- [x] **T4.3** TUI 日志视图 Tab
   - 新增 Log tab，滚屏显示，`l` 切换级别过滤，自动截断保持最近 500 行。
   - 验收：TUI 测试覆盖 tab 切换、缓冲截断。
-  - commit: -
+  - commit: 本任务（app.go L键日志覆盖+logsCmd+renderLogOverlay+i18n）
 
 ### Phase 5：profile 抽象（MEDIUM）
 
