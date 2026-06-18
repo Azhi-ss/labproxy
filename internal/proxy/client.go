@@ -171,6 +171,19 @@ func (c *Client) Logs(ctx context.Context, level string) <-chan LogEntry {
 		}
 		defer resp.Body.Close()
 
+		// 非 200 响应（401/404/500 等）投递错误 entry，避免调用方静默 EOF
+		if resp.StatusCode >= http.StatusBadRequest {
+			body, _ := io.ReadAll(resp.Body)
+			select {
+			case out <- LogEntry{
+				Level:   "error",
+				Payload: fmt.Sprintf("logs request failed: %d %s", resp.StatusCode, strings.TrimSpace(string(body))),
+			}:
+			case <-ctx.Done():
+			}
+			return
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
 		// mihomo 日志单行通常较短，但放大缓冲以容错
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

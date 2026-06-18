@@ -97,13 +97,25 @@ func (s *Store) Create(p Profile) error {
 	return nil
 }
 
-// atomicWrite 原子写入文件：先写 tmp 再 rename，避免半写状态。
+// atomicWrite 原子写入文件：先写唯一 tmp 再 rename，避免半写状态与多进程 tmp 冲突。
 func atomicWrite(path string, data []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".profile-tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	tmp.Close()
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Load 读取一个 profile。

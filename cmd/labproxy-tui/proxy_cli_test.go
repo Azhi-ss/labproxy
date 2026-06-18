@@ -760,3 +760,22 @@ func TestRunDNSCLI_HumanReadable(t *testing.T) {
 		t.Errorf("human output missing name/ip: %s", s)
 	}
 }
+
+func TestRunDNSCLI_TypeValueNotParsedAsName(t *testing.T) {
+	var gotName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotName = r.URL.Query().Get("name")
+		fmt.Fprint(w, `{"Status":0,"Question":[],"Answer":[]}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	// --type AAAA example.com：AAAA 不应被当 name
+	code := runDNSCLI(&out, &out, []string{"--type", "AAAA", "example.com", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if gotName != "example.com" {
+		t.Errorf("name=%s want example.com (AAAA was parsed as name bug)", gotName)
+	}
+}

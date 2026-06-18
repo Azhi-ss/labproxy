@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"os"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -246,11 +246,11 @@ func runDelayCLI(stdout, stderr io.Writer, args []string, endpoint, secret strin
 
 // groupProxyTypes 是 mihomo 中可作为"代理组"的类型。
 var groupProxyTypes = map[string]bool{
-	"Selector":     true,
-	"URLTest":      true,
-	"Fallback":     true,
-	"LoadBalance":  true,
-	"Relay":        true,
+	"Selector":    true,
+	"URLTest":     true,
+	"Fallback":    true,
+	"LoadBalance": true,
+	"Relay":       true,
 }
 
 // isGroupProxy 判断是否为代理组（含多个候选节点）。
@@ -474,11 +474,16 @@ func runDNSCLI(stdout, stderr io.Writer, args []string, endpoint, secret string)
 		qtype = "A"
 	}
 	name := ""
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if a == "--json" || strings.HasPrefix(a, "--json=") {
 			continue
 		}
-		if a == "--type" || strings.HasPrefix(a, "--type=") {
+		if a == "--type" {
+			i++ // 跳过 --type 的值
+			continue
+		}
+		if strings.HasPrefix(a, "--type=") {
 			continue
 		}
 		if a == "" {

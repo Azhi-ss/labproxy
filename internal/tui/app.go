@@ -178,6 +178,7 @@ type model struct {
 	logLevel   string             // 当前订阅级别（debug/info/warning/error）
 	logActive  bool               // 日志流是否正在订阅
 	logCancel  context.CancelFunc // 停止当前日志订阅
+	logCtx     context.Context    // 当前日志订阅的 ctx（与 logCancel 配对）
 
 	width  int
 	height int
@@ -295,8 +296,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.logEntries) > maxLogEntries {
 			m.logEntries = m.logEntries[len(m.logEntries)-maxLogEntries:]
 		}
-		if m.logActive {
-			return m, m.logsCmd()
+		if m.logActive && m.logCtx != nil {
+			return m, m.logsCmd(m.logCtx)
 		}
 		return m, nil
 	case settingsResultMsg:
@@ -426,8 +427,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.logLevel == "" {
 				m.logLevel = "info"
 			}
+			// 在 model 上创建 ctx+cancel，确保 cancel 存入返回的 m（避免值接收者丢失）
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
+			m.logCtx = ctx
 			m.statusLine = T().LogOverlayHint
-			return m, m.logsCmd()
+			return m, m.logsCmd(ctx)
 		case key.Matches(msg, m.keys.Rules):
 			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
 				m.rulesModal.Open()
@@ -752,15 +757,13 @@ func (m model) testGroupCmd() tea.Cmd {
 }
 
 // logsCmd 订阅 mihomo /logs 流，阻塞读一条返回 logEntryMsg。
-// 持续流靠 Update 收到 logEntryMsg 后再次调度 logsCmd（若仍 logActive）。
-// 退出 logMode 时 logActive=false 并调用 logCancel 停止底层 HTTP 连接。
-func (m model) logsCmd() tea.Cmd {
+// ctx 由调用方创建并存入 model.logCancel，确保退出时可取消。
+// 持续流靠 Update 收到 logEntryMsg 后再次调度 logsCmd（复用同一 ctx，不新建流）。
+func (m model) logsCmd(ctx context.Context) tea.Cmd {
 	level := m.logLevel
 	if level == "" {
 		level = "info"
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	m.logCancel = cancel
 	ch := m.client.Logs(ctx, level)
 
 	return func() tea.Msg {
@@ -815,10 +818,16 @@ func (m model) handleLogKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
 	}
 	// l 切换级别
 	if msg.Type == tea.KeyRunes && string(msg.Runes) == "l" {
+		m.stopLogStream() // 停止旧流
 		m.logLevel = nextLogLevel(m.logLevel)
 		m.logEntries = nil
+		// 新建 ctx+cancel 存入 model
+		ctx, cancel := context.WithCancel(context.Background())
+		m.logCancel = cancel
+		m.logCtx = ctx
+		m.logActive = true
 		m.statusLine = fmt.Sprintf(T().LogLevelFmt, m.logLevel)
-		return true, m, m.logsCmd()
+		return true, m, m.logsCmd(ctx)
 	}
 	return false, m, nil
 }

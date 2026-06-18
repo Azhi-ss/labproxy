@@ -872,14 +872,16 @@ _find_system_kernel() {
 }
 
 # _download_mihomo 按 os/arch 从 mihomo releases 下载内核到 zipdir，输出下载的 zip 路径。
+# 注意：所有状态信息走 stderr，stdout 只输出最终路径，供调用方 $(...) 捕获。
 _download_mihomo() {
     local zipdir="$1" os="$2" arch="$3"
     local version="${MIHOMO_DOWNLOAD_VERSION}"
     local url="https://github.com/MetaCubeX/mihomo/releases/download/${version}/mihomo-${os}-${arch}-${version}.gz"
     local dest="${zipdir}/mihomo-${os}-${arch}-${version}.gz"
 
-    _okcat '⏳' "正在下载 mihomo 内核（${os}/${arch}）..."
-    if _download_file "$url" "$dest" "mihomo-${os}-${arch}"; then
+    _okcat '⏳' "正在下载 mihomo 内核（${os}/${arch}）..." >&2
+    # _download_file 内部 _okcat 也重定向到 stderr，避免污染 stdout 捕获
+    if _download_file "$url" "$dest" "mihomo-${os}-${arch}" >&2; then
         printf '%s\n' "$dest"
         return 0
     fi
