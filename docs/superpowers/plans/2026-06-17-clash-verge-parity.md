@@ -140,7 +140,7 @@
 
 - [x] **T7.1** doctor 增强：覆盖连接/测速/日志/profile 健康检查
 - [x] **T7.2** README 更新：agent-native 章节 + `--json` schema 文档
-- [ ] **T7.3** 全量回归：`go test -race ./...` + bash 测试全绿
+- [x] **T7.3** 全量回归：`go test -race ./...` + bash 测试全绿
 
 ## 5. loop 运行约定
 

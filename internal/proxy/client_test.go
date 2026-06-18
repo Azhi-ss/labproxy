@@ -2,12 +2,12 @@ package proxy
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
-	"sync"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -763,6 +763,7 @@ func TestLogs_ContextCancel(t *testing.T) {
 
 	client := NewClient(srv.URL, "")
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	ch := client.Logs(ctx, "info")
 	count := 0
