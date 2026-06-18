@@ -18,17 +18,29 @@ _get_kernel
 mkdir -p "$LABPROXY_HOME_DIR"/{bin,config,logs}
 
 # 解压并安装二进制文件到用户目录
-if ! gzip -dc "$ZIP_KERNEL" > "${LABPROXY_HOME_DIR}/bin/$BIN_KERNEL_NAME"; then
-    _error_quit "解压内核文件失败：${ZIP_KERNEL}"
+if [ -n "${LABPROXY_SYSTEM_KERNEL:-}" ] && [ -x "$LABPROXY_SYSTEM_KERNEL" ]; then
+    # 系统内核（brew/PATH）：直接复制，不解压 zip
+    cp -f "$LABPROXY_SYSTEM_KERNEL" "${LABPROXY_HOME_DIR}/bin/$BIN_KERNEL_NAME" \
+        || _error_quit "复制系统内核失败：${LABPROXY_SYSTEM_KERNEL}"
+    _okcat '✅' "使用系统内核：${LABPROXY_SYSTEM_KERNEL}"
+elif [ -n "$ZIP_KERNEL" ] && [ -f "$ZIP_KERNEL" ]; then
+    if ! gzip -dc "$ZIP_KERNEL" > "${LABPROXY_HOME_DIR}/bin/$BIN_KERNEL_NAME"; then
+        _error_quit "解压内核文件失败：${ZIP_KERNEL}"
+    fi
+else
+    _error_quit "未找到内核（既无系统内核也无 zip）"
 fi
 chmod +x "${LABPROXY_HOME_DIR}/bin/$BIN_KERNEL_NAME"
 
-if ! tar -xf "$ZIP_SUBCONVERTER" -C "${LABPROXY_HOME_DIR}/bin"; then
-    _error_quit "解压 subconverter 失败：${ZIP_SUBCONVERTER}"
+# subconverter / yq 仅在包存在时安装；失败降级（订阅转换可选）
+if [ -n "${ZIP_SUBCONVERTER:-}" ] && [ -f "$ZIP_SUBCONVERTER" ]; then
+    tar -xf "$ZIP_SUBCONVERTER" -C "${LABPROXY_HOME_DIR}/bin" 2>/dev/null \
+        || _failcat "⚠️" "解压 subconverter 失败（架构不匹配？订阅转换将不可用）"
 fi
 
-if ! tar -xf "$ZIP_YQ" -C "${LABPROXY_HOME_DIR}/bin"; then
-    _error_quit "解压 yq 失败：${ZIP_YQ}"
+if [ -n "${ZIP_YQ:-}" ] && [ -f "$ZIP_YQ" ]; then
+    tar -xf "$ZIP_YQ" -C "${LABPROXY_HOME_DIR}/bin" 2>/dev/null \
+        || _failcat "⚠️" "解压 yq 失败（架构不匹配？将无法编辑 YAML）"
 fi
 
 # 重命名 yq 二进制文件（yq_linux_amd64 -> yq）

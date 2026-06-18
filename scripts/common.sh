@@ -812,27 +812,126 @@ _set_rc() {
 
 # 默认集成、安装mihomo内核
 # 移除/删除mihomo：下载安装clash内核
+#
+# 内核检测优先级（_get_kernel）：
+#   1. 内置 zip 按 OS/架构匹配（mihomo-<os>-<arch>，优先 mihomo 后 clash）
+#   2. brew 安装的 mihomo（/opt/homebrew/bin/mihomo 等）
+#   3. 系统 PATH 的 mihomo/clash
+#   4. 按 OS/架构从 mihomo releases 下载
+
+# MIHOMO_DOWNLOAD_VERSION 是无内置 zip 时下载的 mihomo 版本。
+MIHOMO_DOWNLOAD_VERSION="v1.19.2"
+
+# _detect_os_arch 输出规范化后的 "os arch"（如 "darwin arm64" / "linux amd64"）。
+_detect_os_arch() {
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "$arch" in
+    x86_64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    armv7l|armv*) arch="arm64" ;;
+    i686|i386) arch="386" ;;
+    esac
+    printf '%s %s\n' "$os" "$arch"
+}
+
+# _detect_kernel_zip 在 zipdir 内按 os/arch 匹配内核压缩包，输出匹配的 zip 路径（无匹配输出空）。
+# 优先 mihomo，其次 clash。
+_detect_kernel_zip() {
+    local zipdir="$1" os="$2" arch="$3"
+    [ -n "$zipdir" ] && [ -n "$os" ] && [ -n "$arch" ] || return 0
+
+    local f
+    for f in "$zipdir"/mihomo-"${os}"-"${arch}"*.gz; do
+        [ -f "$f" ] || continue
+        printf '%s\n' "$f"
+        return 0
+    done
+    for f in "$zipdir"/clash-"${os}"-"${arch}"*.gz; do
+        [ -f "$f" ] || continue
+        printf '%s\n' "$f"
+        return 0
+    done
+    return 0
+}
+
+# _find_system_kernel 检测 brew 或 PATH 中的 mihomo/clash，输出路径（无则空）。
+_find_system_kernel() {
+    local bin
+    for bin in /opt/homebrew/bin/mihomo /usr/local/bin/mihomo /opt/homebrew/bin/clash /usr/local/bin/clash; do
+        [ -x "$bin" ] || continue
+        printf '%s\n' "$bin"
+        return 0
+    done
+    bin=$(command -v mihomo 2>/dev/null || true)
+    [ -n "$bin" ] && { printf '%s\n' "$bin"; return 0; }
+    bin=$(command -v clash 2>/dev/null || true)
+    [ -n "$bin" ] && { printf '%s\n' "$bin"; return 0; }
+    return 0
+}
+
+# _download_mihomo 按 os/arch 从 mihomo releases 下载内核到 zipdir，输出下载的 zip 路径。
+_download_mihomo() {
+    local zipdir="$1" os="$2" arch="$3"
+    local version="${MIHOMO_DOWNLOAD_VERSION}"
+    local url="https://github.com/MetaCubeX/mihomo/releases/download/${version}/mihomo-${os}-${arch}-${version}.gz"
+    local dest="${zipdir}/mihomo-${os}-${arch}-${version}.gz"
+
+    _okcat '⏳' "正在下载 mihomo 内核（${os}/${arch}）..."
+    if _download_file "$url" "$dest" "mihomo-${os}-${arch}"; then
+        printf '%s\n' "$dest"
+        return 0
+    fi
+    _failcat "❌" "下载 mihomo 失败：${url}"
+    return 1
+}
+
 function _get_kernel() {
-    [ -f "$ZIP_CLASH" ] && {
-        ZIP_KERNEL=$ZIP_CLASH
-        BIN_KERNEL=$BIN_CLASH
-    }
+    local os arch
+    read -r os arch <<< "$(_detect_os_arch)"
 
-    [ -f "$ZIP_MIHOMO" ] && {
-        ZIP_KERNEL=$ZIP_MIHOMO
+    # 1. 内置 zip 按 OS/架构匹配
+    local matched_zip
+    matched_zip=$(_detect_kernel_zip "$ZIP_BASE_DIR" "$os" "$arch")
+    if [ -n "$matched_zip" ] && [ -f "$matched_zip" ]; then
+        ZIP_KERNEL=$matched_zip
+        case "$(basename "$matched_zip")" in
+        mihomo*) BIN_KERNEL=$BIN_MIHOMO ;;
+        clash*) BIN_KERNEL=$BIN_CLASH ;;
+        esac
+        BIN_KERNEL_NAME=$(basename "$BIN_KERNEL")
+        _okcat "安装内核（内置 zip，${os}/${arch}）：${BIN_KERNEL_NAME}"
+        return 0
+    fi
+
+    # 2 & 3. brew / PATH 系统内核
+    local sys_kernel
+    sys_kernel=$(_find_system_kernel)
+    if [ -n "$sys_kernel" ] && [ -x "$sys_kernel" ]; then
+        case "$(basename "$sys_kernel")" in
+        mihomo*) BIN_KERNEL=$BIN_MIHOMO ;;
+        clash*) BIN_KERNEL=$BIN_CLASH ;;
+        esac
+        ZIP_KERNEL=""  # 系统内核无 zip
+        LABPROXY_SYSTEM_KERNEL="$sys_kernel"  # 供 install.sh 复制
+        BIN_KERNEL_NAME=$(basename "$BIN_KERNEL")
+        _okcat "安装内核（系统 ${sys_kernel}）：${BIN_KERNEL_NAME}"
+        return 0
+    fi
+
+    # 4. 下载 mihomo
+    _failcat "⚠️" "未检测到 ${os}/${arch} 的内置内核 zip 或系统内核，尝试下载 mihomo..."
+    local dl_zip
+    if dl_zip=$(_download_mihomo "$ZIP_BASE_DIR" "$os" "$arch"); then
+        ZIP_KERNEL=$dl_zip
         BIN_KERNEL=$BIN_MIHOMO
-    }
+        BIN_KERNEL_NAME=$(basename "$BIN_KERNEL")
+        _okcat "安装内核（下载，${os}/${arch}）：${BIN_KERNEL_NAME}"
+        return 0
+    fi
 
-    [ ! -f "$ZIP_MIHOMO" ] && [ ! -f "$ZIP_CLASH" ] && {
-        local arch=$(uname -m)
-        _failcat "${ZIP_BASE_DIR}：未检测到可用的内核压缩包"
-        _download_clash "$arch"
-        ZIP_KERNEL=$ZIP_CLASH
-        BIN_KERNEL=$BIN_CLASH
-    }
-
-    BIN_KERNEL_NAME=$(basename "$BIN_KERNEL")
-    _okcat "安装内核：${BIN_KERNEL_NAME}"
+    _error_quit "无法获取 ${os}/${arch} 内核：请手动下载 mihomo-${os}-${arch} 至 ${ZIP_BASE_DIR}，或用 brew install mihomo"
 }
 
 # 检测并选择预编译的 labproxy-tui 压缩包
