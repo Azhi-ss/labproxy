@@ -1483,6 +1483,20 @@ function labproxyctl() {
         ;;
     doctor)
         shift
+        # --json 转发到 Go 结构化诊断（agent-native）
+        for _darg in "$@"; do
+            case "$_darg" in
+            --json|--json=true)
+                _get_ui_port 2>/dev/null || true
+                local _doc_endpoint=""
+                [ -n "${UI_PORT:-}" ] && _doc_endpoint="http://127.0.0.1:${UI_PORT}"
+                exec "$LABPROXY_TUI_BIN" doctor \
+                    ${_doc_endpoint:+--endpoint "$_doc_endpoint"} \
+                    ${SECRET:+--secret "$SECRET"} \
+                    "$@"
+                ;;
+            esac
+        done
         labproxydoctor "$@"
         ;;
     *)
@@ -1526,7 +1540,7 @@ Commands:
     sub      <list|remove|rename>  订阅管理
     update   [名称]         更新指定或当前订阅
     lang     [zh|en]        切换 TUI 界面语言
-    doctor                  诊断环境与运行状态
+    doctor                  诊断环境与运行状态 [--json]
 
 说明:
     • 用户空间运行，无需 sudo 权限

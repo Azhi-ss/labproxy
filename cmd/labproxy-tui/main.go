@@ -31,6 +31,20 @@ func main() {
 		os.Exit(runStatusCLI(os.Stdout, os.Stderr, os.Args[2:], home, *endpoint, *secret))
 	}
 
+	if len(os.Args) >= 2 && os.Args[1] == "doctor" {
+		home := os.Getenv("HOME")
+		args := os.Args[2:]
+		args, ep := extractStringFlag(args, "--endpoint")
+		args, sec := extractStringFlag(args, "--secret")
+		if ep == "" {
+			ep = *endpoint
+		}
+		if sec == "" {
+			sec = *secret
+		}
+		os.Exit(runDoctorCLI(os.Stdout, os.Stderr, args, home, ep, sec))
+	}
+
 	if len(os.Args) >= 2 && os.Args[1] == "logs" {
 		home := os.Getenv("HOME")
 		args := os.Args[2:]
