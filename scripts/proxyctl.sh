@@ -1463,7 +1463,7 @@ function labproxyctl() {
         shift
         exec "$LABPROXY_TUI_BIN" rules --mixin-config "$LABPROXY_CONFIG_MIXIN" "$@"
         ;;
-    proxies|connections|delay|test)
+    proxies|connections|delay|test|logs)
         shift
         _get_ui_port 2>/dev/null || true
         local _proxy_endpoint=""
@@ -1505,6 +1505,7 @@ Commands:
     connections close <id|all>  关闭连接 [--json]
     delay     <name>        测节点延迟 [--json]
     test      [group]       批量测速（默认 GLOBAL，按延迟排序） [--json]
+    logs      [-f] [--level] 查看日志（-f 跟随流，默认读最近 50 行） [--json]
     ui                      Web 控制台地址
     proxy    [on|off|status]       系统代理环境变量
     port     [status|auto|set]     代理端口模式设置

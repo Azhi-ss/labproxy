@@ -104,10 +104,10 @@
   - 验收：context 取消能停止；逐行产出 `(level, msg)`。
   - commit: 本任务（client.go Logs + types.go LogEntry）
 
-- [ ] **T4.2** CLI `labproxy logs [-f] [--level]`
+- [x] **T4.2** CLI `labproxy logs [-f] [--level]`
   - `-f` 跟随流；无 `-f` 输出最近 N 行（读 log 文件）。
   - 验收：`-f` 可 Ctrl-C 干净退出；`--json` 每行一个 envelope。
-  - commit: -
+  - commit: 本任务（proxy_cli.go runLogsCLI + main/proxyctl 接线）
 
 - [ ] **T4.3** TUI 日志视图 Tab
   - 新增 Log tab，滚屏显示，`l` 切换级别过滤，自动截断保持最近 500 行。

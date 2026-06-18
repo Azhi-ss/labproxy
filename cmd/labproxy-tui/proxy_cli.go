@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"fmt"
 	"io"
 	"sort"
@@ -374,4 +375,90 @@ func fallbackName(s string) string {
 		return "<empty>"
 	}
 	return s
+}
+
+// logTailLines 是无 -f 时读取的最近日志行数。
+const logTailLines = 50
+
+// runLogsCLI 实现 `labproxy-tui logs [-f] [--level LEVEL] [--json]`。
+// -f：订阅 mihomo /logs 流式输出；无 -f：读 ~/.labproxy/logs/labproxy.log 最近 N 行。
+func runLogsCLI(stdout, stderr io.Writer, args []string, home, endpoint, secret string) int {
+	if hasFlag(args, "-f") || hasFlag(args, "--follow") {
+		return runLogsCLIFollow(stdout, stderr, args, endpoint, secret)
+	}
+
+	// 读文件最近 N 行
+	logPath := home + "/.labproxy/logs/labproxy.log"
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		if cli.IsJSONFlag(args) {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: "read log file: " + err.Error()})
+			return 1
+		}
+		fmt.Fprintf(stderr, "error: read log file: %v\n", err)
+		return 1
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > logTailLines {
+		lines = lines[len(lines)-logTailLines:]
+	}
+	for _, l := range lines {
+		fmt.Fprintln(stdout, l)
+	}
+	return 0
+}
+
+// runLogsCLIFollow 订阅 mihomo /logs 流并逐行输出。
+// 读到流结束（EOF/连接关闭）即返回；生产中由 SIGINT 中断进程。
+func runLogsCLIFollow(stdout, stderr io.Writer, args []string, endpoint, secret string) int {
+	jsonOut := cli.IsJSONFlag(args)
+	level := flagValue(args, "--level")
+	if level == "" {
+		level = "info"
+	}
+	if endpoint == "" {
+		fmt.Fprintln(stderr, "error: --endpoint is required for -f")
+		return 2
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := proxy.NewClient(endpoint, secret)
+	ch := client.Logs(ctx, level)
+
+	for e := range ch {
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: true, Data: map[string]string{
+				"level":   e.Level,
+				"payload": e.Payload,
+			}})
+		} else {
+			fmt.Fprintf(stdout, "[%s] %s\n", e.Level, e.Payload)
+		}
+	}
+	return 0
+}
+
+// hasFlag 检测 args 是否含指定 flag。
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// flagValue 取 --flag value 或 --flag=value 的值。
+func flagValue(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(a, flag+"=") {
+			return strings.TrimPrefix(a, flag+"=")
+		}
+	}
+	return ""
 }

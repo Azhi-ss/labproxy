@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -414,5 +415,127 @@ func TestRunTestCLI_DefaultGroup(t *testing.T) {
 	}
 	if env.Data.Group != "GLOBAL" {
 		t.Errorf("default group should be GLOBAL, got %q", env.Data.Group)
+	}
+}
+
+func TestRunLogsCLI_NoFollow(t *testing.T) {
+	home := t.TempDir()
+	logDir := home + "/.labproxy/logs"
+	os.MkdirAll(logDir, 0o755)
+	content := ""
+	for i := 0; i < 60; i++ {
+		content += fmt.Sprintf("line %d\n", i)
+	}
+	os.WriteFile(logDir+"/labproxy.log", []byte(content), 0o644)
+
+	var out bytes.Buffer
+	// 无 -f：输出最近 50 行
+	code := runLogsCLI(&out, &out, []string{}, home, "http://x", "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	s := out.String()
+	// 应含末尾 line 59，不应含 line 0（被截断到 50 行）
+	if !strings.Contains(s, "line 59") {
+		t.Errorf("expected recent line 59: %s", s)
+	}
+	if strings.Contains(s, "line 0\n") {
+		t.Errorf("should not contain line 0 (truncated): %s", s)
+	}
+}
+
+func TestRunLogsCLI_FollowStream(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/logs" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		lines := []string{
+			`{"type":"info","payload":"hello"}`,
+			`{"type":"error","payload":"oops"}`,
+		}
+		for _, l := range lines {
+			fmt.Fprintln(w, l)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		// 写完即返回，关闭连接让客户端 EOF 退出
+		return
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	// -f 流式；ctx 在测试内控制取消
+	code := runLogsCLIFollow(&out, &out, []string{"-f"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "hello") || !strings.Contains(s, "oops") {
+		t.Errorf("expected hello+oops in output: %s", s)
+	}
+}
+
+func TestRunLogsCLI_FollowJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprintln(w, `{"type":"info","payload":"msg1"}`)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runLogsCLIFollow(&out, &out, []string{"-f", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	// 每行应为合法 JSON envelope
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) == 0 {
+		t.Fatal("expected at least one json line")
+	}
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Level   string `json:"level"`
+			Payload string `json:"payload"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("invalid json line: %v\n%s", err, lines[0])
+	}
+	if env.Data.Payload != "msg1" {
+		t.Errorf("payload=%s want msg1", env.Data.Payload)
+	}
+}
+
+func TestRunLogsCLI_LevelFlag(t *testing.T) {
+	var gotLevel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLevel = r.URL.Query().Get("level")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"type":"warning","payload":"w"}`)
+		w.(http.Flusher).Flush()
+		return
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runLogsCLIFollow(&out, &out, []string{"-f", "--level", "warning"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if gotLevel != "warning" {
+		t.Errorf("level=%s want warning", gotLevel)
 	}
 }
