@@ -101,6 +101,55 @@ labproxy tui             # open the TUI
 
 ---
 
+## Agent-Native (Machine-Readable Output)
+
+LabProxy's differentiator is being an **agent-native proxy control plane**: every query/action command supports `--json`, emitting a stable-schema JSON envelope for scripts and AI agents to parse.
+
+### JSON Envelope Schema
+
+All `--json` output follows one envelope:
+
+```json
+{
+  "ok": true,          // whether the operation succeeded
+  "data": <any>,       // payload on success, null on failure
+  "error": ""          // empty on success, error message on failure
+}
+```
+
+### Commands Supporting --json
+
+| Command | data field |
+|---------|------------|
+| `labproxy status --json` | `{running, pid, proxy_port, ui_port, dns_port, mode, system_proxy, uptime}` |
+| `labproxy proxies --json` | raw mihomo `/proxies` response |
+| `labproxy connections --json` | raw mihomo `/connections` response |
+| `labproxy connections close <id\|all> --json` | `{closed: "<id\|all>"}` |
+| `labproxy delay <name> --json` | `{name, delay}` (ms; ok=false on failure) |
+| `labproxy test [group] --json` | `{group, results: {name: delay}}` (failed nodes delay=-1) |
+| `labproxy logs -f --json` | one envelope per line `{level, payload}` |
+| `labproxy dns <name> [--type A] --json` | mihomo `/dns/query` response `{Status, Question, Answer}` |
+| `labproxy profile <list\|create\|delete\|use> --json` | `[]` profile names or `{name}` |
+| `labproxy doctor --json` | `{checks: [{name, ok, detail}]}` (per-check ok) |
+
+### Example: agent reads runtime status
+
+```bash
+$ labproxy status --json
+{"ok":true,"data":{"running":true,"pid":12345,"proxy_port":7890,"ui_port":9090,"dns_port":15353,"mode":"rule","system_proxy":true,"uptime":"01:23:45"},"error":""}
+```
+
+### Example: batch delay test and pick the fastest
+
+```bash
+$ labproxy test GLOBAL --json
+{"ok":true,"data":{"group":"GLOBAL","results":{"Node-A":50,"Node-B":120,"Node-C":-1}},"error":""}
+```
+
+> `--json` output contains no ANSI color codes; without `--json`, human-readable colored text is emitted.
+
+---
+
 ## Rules Management
 
 ```bash

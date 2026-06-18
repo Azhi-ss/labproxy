@@ -101,6 +101,55 @@ labproxy tui             # 打开 TUI 界面
 
 ---
 
+## Agent-Native（机器可读输出）
+
+LabProxy 的差异化定位是 **agent-native 代理控制面**：所有查询/操作命令都支持 `--json`，输出稳定 schema 的 JSON envelope，便于脚本与 AI agent 解析。
+
+### JSON Envelope Schema
+
+所有 `--json` 输出遵循统一信封：
+
+```json
+{
+  "ok": true,          // 操作是否成功
+  "data": <any>,       // 成功时的数据负载，失败时为 null
+  "error": ""          // 成功时为空字符串，失败时为错误信息
+}
+```
+
+### 支持 --json 的命令
+
+| 命令 | data 字段 |
+|------|-----------|
+| `labproxy status --json` | `{running, pid, proxy_port, ui_port, dns_port, mode, system_proxy, uptime}` |
+| `labproxy proxies --json` | mihomo `/proxies` 原始响应 |
+| `labproxy connections --json` | mihomo `/connections` 原始响应 |
+| `labproxy connections close <id\|all> --json` | `{closed: "<id\|all>"}` |
+| `labproxy delay <name> --json` | `{name, delay}`（ms，失败时 ok=false） |
+| `labproxy test [group] --json` | `{group, results: {name: delay}}`（失败节点 delay=-1） |
+| `labproxy logs -f --json` | 每行一个 envelope `{level, payload}` |
+| `labproxy dns <name> [--type A] --json` | mihomo `/dns/query` 响应 `{Status, Question, Answer}` |
+| `labproxy profile <list\|create\|delete\|use> --json` | `[]` profile 名 或 `{name}` |
+| `labproxy doctor --json` | `{checks: [{name, ok, detail}]}`（每项独立 ok） |
+
+### 示例：agent 拿到运行状态
+
+```bash
+$ labproxy status --json
+{"ok":true,"data":{"running":true,"pid":12345,"proxy_port":7890,"ui_port":9090,"dns_port":15353,"mode":"rule","system_proxy":true,"uptime":"01:23:45"},"error":""}
+```
+
+### 示例：批量测速并按延迟选优
+
+```bash
+$ labproxy test GLOBAL --json
+{"ok":true,"data":{"group":"GLOBAL","results":{"Node-A":50,"Node-B":120,"Node-C":-1}},"error":""}
+```
+
+> `--json` 输出不含 ANSI 颜色码；无 `--json` 时输出人类可读的彩色文本。
+
+---
+
 ## 规则管理
 
 ```bash
