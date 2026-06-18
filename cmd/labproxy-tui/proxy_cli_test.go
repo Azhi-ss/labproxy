@@ -669,3 +669,94 @@ func TestRunProfileCLI_UseNotFound(t *testing.T) {
 		t.Errorf("error should mention nope: %q", env.Error)
 	}
 }
+
+func TestRunDNSCLI_JSON(t *testing.T) {
+	var gotName, gotType, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotName = r.URL.Query().Get("name")
+		gotType = r.URL.Query().Get("type")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"Status":0,"Question":[{"name":"example.com.","type":1}],"Answer":[{"name":"example.com.","type":1,"TTL":300,"data":"93.184.216.34"}]}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runDNSCLI(&out, &out, []string{"example.com", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	if gotPath != "/dns/query" {
+		t.Errorf("path=%s want /dns/query", gotPath)
+	}
+	if gotName != "example.com" {
+		t.Errorf("name=%s want example.com", gotName)
+	}
+	if gotType != "A" {
+		t.Errorf("type=%s want A", gotType)
+	}
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Status  int `json:"Status"`
+			Answer  []struct {
+				Data string `json:"data"`
+			} `json:"Answer"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Data.Status != 0 {
+		t.Errorf("result wrong: %+v", env)
+	}
+	if len(env.Data.Answer) != 1 || env.Data.Answer[0].Data != "93.184.216.34" {
+		t.Errorf("answer wrong: %+v", env.Data.Answer)
+	}
+}
+
+func TestRunDNSCLI_TypeFlag(t *testing.T) {
+	var gotType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.URL.Query().Get("type")
+		fmt.Fprint(w, `{"Status":0,"Question":[],"Answer":[]}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runDNSCLI(&out, &out, []string{"x.com", "--type", "AAAA", "--json"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if gotType != "AAAA" {
+		t.Errorf("type=%s want AAAA", gotType)
+	}
+}
+
+func TestRunDNSCLI_MissingName(t *testing.T) {
+	var out bytes.Buffer
+	code := runDNSCLI(&out, &out, []string{"--json"}, "http://x", "")
+	if code == 0 {
+		t.Fatal("expected non-zero exit for missing name")
+	}
+	if !strings.Contains(out.String(), "usage") && !strings.Contains(out.String(), "name") {
+		t.Errorf("error should mention usage/name: %s", out.String())
+	}
+}
+
+func TestRunDNSCLI_HumanReadable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"Status":0,"Question":[{"name":"example.com.","type":1}],"Answer":[{"name":"example.com.","type":1,"TTL":300,"data":"93.184.216.34"}]}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	code := runDNSCLI(&out, &out, []string{"example.com"}, srv.URL, "")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	s := out.String()
+	if !strings.Contains(s, "example.com") || !strings.Contains(s, "93.184.216.34") {
+		t.Errorf("human output missing name/ip: %s", s)
+	}
+}

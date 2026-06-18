@@ -132,9 +132,9 @@
   - 验收：能力探测；不支持时优雅降级。
   - commit: 本任务（client.go DNSQuery + types.go DNS 类型）
 
-- [ ] **T6.2** TUI DNS 视图 / `labproxy dns` CLI
+- [x] **T6.2** TUI DNS 视图 / `labproxy dns` CLI
   - 验收：查询演示 + JSON。
-  - commit: -
+  - commit: 本任务（proxy_cli.go runDNSCLI + main/proxyctl 接线；TUI 视图留作后续增强）
 
 ### Phase 7：收尾
 

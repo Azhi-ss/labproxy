@@ -462,3 +462,75 @@ func flagValue(args []string, flag string) string {
 	}
 	return ""
 }
+
+// runDNSCLI 实现 `labproxy-tui dns <name> [--type TYPE] [--json]`。
+// 调 mihomo /dns/query 解析域名，输出 Question/Answer。
+func runDNSCLI(stdout, stderr io.Writer, args []string, endpoint, secret string) int {
+	jsonOut := cli.IsJSONFlag(args)
+
+	// 提取 --type 与首个非 flag 参数作为 name
+	qtype := flagValue(args, "--type")
+	if qtype == "" {
+		qtype = "A"
+	}
+	name := ""
+	for _, a := range args {
+		if a == "--json" || strings.HasPrefix(a, "--json=") {
+			continue
+		}
+		if a == "--type" || strings.HasPrefix(a, "--type=") {
+			continue
+		}
+		if a == "" {
+			continue
+		}
+		name = a
+		break
+	}
+
+	if name == "" {
+		msg := "usage: labproxy dns <name> [--type A|AAAA|CNAME|...] [--json]"
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: msg})
+		} else {
+			fmt.Fprintln(stderr, msg)
+		}
+		return 2
+	}
+	if endpoint == "" {
+		fmt.Fprintln(stderr, "error: --endpoint is required")
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	client := proxy.NewClient(endpoint, secret)
+	resp, err := client.DNSQuery(ctx, name, qtype)
+	if err != nil {
+		if jsonOut {
+			_ = cli.PrintJSON(stdout, cli.Envelope{OK: false, Error: err.Error()})
+			return 1
+		}
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	if jsonOut {
+		_ = cli.PrintJSON(stdout, cli.Envelope{OK: true, Data: resp})
+		return 0
+	}
+
+	fmt.Fprintf(stdout, "查询: %s (type=%s)  状态: %d\n", name, qtype, resp.Status)
+	if len(resp.Question) > 0 {
+		fmt.Fprintf(stdout, "问题: %s\n", resp.Question[0].Name)
+	}
+	if len(resp.Answer) == 0 {
+		fmt.Fprintln(stdout, "无应答记录")
+	} else {
+		fmt.Fprintln(stdout, "应答:")
+		for _, a := range resp.Answer {
+			fmt.Fprintf(stdout, "  %s  TTL=%d  %s\n", a.Name, a.TTL, a.Data)
+		}
+	}
+	return 0
+}
