@@ -792,3 +792,66 @@ loop:
 		t.Error("expected to receive at least some entries before cancel")
 	}
 }
+
+func TestDNSQuery(t *testing.T) {
+	var gotName, gotType, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotName = r.URL.Query().Get("name")
+		gotType = r.URL.Query().Get("type")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"Status":0,"Question":[{"name":"example.com.","type":1}],"Answer":[{"name":"example.com.","type":1,"TTL":300,"data":"93.184.216.34"}]}`)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	resp, err := client.DNSQuery(context.Background(), "example.com", "A")
+	if err != nil {
+		t.Fatalf("DNSQuery: %v", err)
+	}
+	if gotPath != "/dns/query" {
+		t.Errorf("path=%s want /dns/query", gotPath)
+	}
+	if gotName != "example.com" {
+		t.Errorf("name=%s want example.com", gotName)
+	}
+	if gotType != "A" {
+		t.Errorf("type=%s want A", gotType)
+	}
+	if resp.Status != 0 {
+		t.Errorf("status=%d want 0", resp.Status)
+	}
+	if len(resp.Answer) != 1 || resp.Answer[0].Data != "93.184.216.34" {
+		t.Errorf("answer wrong: %+v", resp.Answer)
+	}
+}
+
+func TestDNSQuery_ErrorResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("dns query failed"))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	_, err := client.DNSQuery(context.Background(), "x.com", "A")
+	if err == nil {
+		t.Fatal("expected error on 500")
+	}
+	if !strings.Contains(err.Error(), "dns query failed") {
+		t.Errorf("error should mention dns query failed: %v", err)
+	}
+}
+
+func TestDNSQuery_EmptyName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("server should not be called for empty name")
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	_, err := client.DNSQuery(context.Background(), "", "A")
+	if err == nil {
+		t.Fatal("expected error for empty name")
+	}
+}

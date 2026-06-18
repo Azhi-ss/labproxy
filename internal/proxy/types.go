@@ -64,3 +64,22 @@ type LogEntry struct {
 	Level   string `json:"type"`
 	Payload string `json:"payload"`
 }
+
+// DNSQueryResponse 是 mihomo /dns/query 的响应。
+type DNSQueryResponse struct {
+	Status   int           `json:"Status"`
+	Question []DNSQuestion `json:"Question"`
+	Answer   []DNSAnswer   `json:"Answer"`
+}
+
+type DNSQuestion struct {
+	Name string `json:"name"`
+	Type int    `json:"type"`
+}
+
+type DNSAnswer struct {
+	Name string `json:"name"`
+	Type int    `json:"type"`
+	TTL  int    `json:"TTL"`
+	Data string `json:"data"`
+}

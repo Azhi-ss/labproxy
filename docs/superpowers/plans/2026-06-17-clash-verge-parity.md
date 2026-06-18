@@ -128,9 +128,9 @@
 
 ### Phase 6：DNS 可视化（MEDIUM）
 
-- [ ] **T6.1** client 新增 `DNSQuery(name)`（如 mihomo 支持）与 fake-ip 状态读取
+- [x] **T6.1** client 新增 `DNSQuery(name)`（如 mihomo 支持）与 fake-ip 状态读取
   - 验收：能力探测；不支持时优雅降级。
-  - commit: -
+  - commit: 本任务（client.go DNSQuery + types.go DNS 类型）
 
 - [ ] **T6.2** TUI DNS 视图 / `labproxy dns` CLI
   - 验收：查询演示 + JSON。

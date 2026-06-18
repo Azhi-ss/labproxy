@@ -195,6 +195,49 @@ func (c *Client) Logs(ctx context.Context, level string) <-chan LogEntry {
 	return out
 }
 
+// DNSQuery 调用 mihomo /dns/query 解析域名。
+// name 为空时直接报错；qtype 为 DNS 记录类型（A/AAAA/CNAME/MX/TXT 等），空默认 A。
+// 不支持 /dns/query 的内核会返回错误，调用方应优雅降级。
+func (c *Client) DNSQuery(ctx context.Context, name, qtype string) (DNSQueryResponse, error) {
+	if strings.TrimSpace(name) == "" {
+		return DNSQueryResponse{}, fmt.Errorf("dns query failed: empty name")
+	}
+	if qtype == "" {
+		qtype = "A"
+	}
+
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return DNSQueryResponse{}, fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint.Path = path.Join(endpoint.Path, "/dns/query")
+	q := endpoint.Query()
+	q.Set("name", name)
+	q.Set("type", qtype)
+	endpoint.RawQuery = q.Encode()
+
+	req, err := c.newRequest(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return DNSQueryResponse{}, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return DNSQueryResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return DNSQueryResponse{}, fmt.Errorf("dns query failed: %s", strings.TrimSpace(string(body)))
+	}
+
+	var out DNSQueryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return DNSQueryResponse{}, fmt.Errorf("decode dns response: %w", err)
+	}
+	return out, nil
+}
+
 func (c *Client) SwitchProxy(ctx context.Context, groupName, proxyName string) error {
 	payload, err := json.Marshal(map[string]string{"name": proxyName})
 	if err != nil {
