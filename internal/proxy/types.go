@@ -58,3 +58,9 @@ type ConnectionsResponse struct {
 	UploadTotal   int64        `json:"uploadTotal"`
 	Connections   []Connection `json:"connections"`
 }
+
+// LogEntry 是 mihomo /logs 流的一行日志。
+type LogEntry struct {
+	Level   string `json:"type"`
+	Payload string `json:"payload"`
+}

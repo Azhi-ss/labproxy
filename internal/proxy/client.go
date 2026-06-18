@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -135,6 +136,63 @@ func (c *Client) DelayGroup(ctx context.Context, group Proxy, timeout time.Durat
 	}
 	wg.Wait()
 	return result, nil
+}
+
+// Logs 订阅 mihomo /logs 流，逐行产出 LogEntry。
+// level 控制日志级别（debug/info/warning/error/silent），空则用 info。
+// ctx 取消会关闭连接与 channel，调用方应从 channel 读完直到其关闭。
+// 解析失败的行被跳过，不阻断流。
+func (c *Client) Logs(ctx context.Context, level string) <-chan LogEntry {
+	out := make(chan LogEntry)
+	if level == "" {
+		level = "info"
+	}
+
+	go func() {
+		defer close(out)
+
+		endpoint, err := url.Parse(c.baseURL)
+		if err != nil {
+			return
+		}
+		endpoint.Path = path.Join(endpoint.Path, "/logs")
+		q := endpoint.Query()
+		q.Set("level", level)
+		endpoint.RawQuery = q.Encode()
+
+		req, err := c.newRequest(ctx, http.MethodGet, endpoint.String(), nil)
+		if err != nil {
+			return
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		scanner := bufio.NewScanner(resp.Body)
+		// mihomo 日志单行通常较短，但放大缓冲以容错
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			var entry LogEntry
+			if err := json.Unmarshal([]byte(line), &entry); err != nil {
+				continue // 跳过无法解析的行
+			}
+			select {
+			case out <- entry:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out
 }
 
 func (c *Client) SwitchProxy(ctx context.Context, groupName, proxyName string) error {

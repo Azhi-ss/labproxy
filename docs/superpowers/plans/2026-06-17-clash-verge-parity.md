@@ -99,10 +99,10 @@
 
 ### Phase 4：日志实时流
 
-- [ ] **T4.1** client 新增 `Logs(ctx)` SSE 流式日志订阅
+- [x] **T4.1** client 新增 `Logs(ctx)` SSE 流式日志订阅
   - mihomo `GET /logs?level=info`（text/event-stream 或 chunked）。
   - 验收：context 取消能停止；逐行产出 `(level, msg)`。
-  - commit: -
+  - commit: 本任务（client.go Logs + types.go LogEntry）
 
 - [ ] **T4.2** CLI `labproxy logs [-f] [--level]`
   - `-f` 跟随流；无 `-f` 输出最近 N 行（读 log 文件）。

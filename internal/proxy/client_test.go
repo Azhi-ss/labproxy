@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"encoding/json"
 	"sync"
 	"net/http"
@@ -679,5 +680,115 @@ func TestDelayGroup_AllFail(t *testing.T) {
 	}
 	if result["A"] != -1 || result["B"] != -1 {
 		t.Errorf("all-fail should mark -1: %+v", result)
+	}
+}
+
+func TestLogs_Streaming(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/logs" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("level") != "info" {
+			t.Errorf("expected level=info, got %q", r.URL.Query().Get("level"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		// 逐行写 JSON
+		lines := []string{
+			`{"type":"info","payload":"starting"}`,
+			`{"type":"warning","payload":"high load"}`,
+			`{"type":"error","payload":"boom"}`,
+		}
+		for _, l := range lines {
+			fmt.Fprintln(w, l)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	ch := client.Logs(ctx, "info")
+
+	var got []LogEntry
+	for e := range ch {
+		got = append(got, e)
+		if len(got) == 3 {
+			cancel() // 读完取消
+		}
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("expected 3 entries, got %d: %+v", len(got), got)
+	}
+	if got[0].Level != "info" || got[0].Payload != "starting" {
+		t.Errorf("entry0 wrong: %+v", got[0])
+	}
+	if got[1].Level != "warning" || got[1].Payload != "high load" {
+		t.Errorf("entry1 wrong: %+v", got[1])
+	}
+	if got[2].Level != "error" || got[2].Payload != "boom" {
+		t.Errorf("entry2 wrong: %+v", got[2])
+	}
+}
+
+func TestLogs_ContextCancel(t *testing.T) {
+	// 服务端持续写，靠 ctx 取消停止
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		i := 0
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+			fmt.Fprintf(w, `{"type":"info","payload":"line%d"}`+"\n", i)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			i++
+			time.Sleep(50 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ch := client.Logs(ctx, "info")
+	count := 0
+	timer := time.After(500 * time.Millisecond)
+loop:
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				break loop
+			}
+			count++
+			if count == 3 {
+				cancel()
+			}
+		case <-timer:
+			cancel()
+			break loop
+		}
+	}
+	// channel 应在 cancel 后关闭
+	_, ok := <-ch
+	if ok {
+		t.Error("expected channel closed after cancel")
+	}
+	if count == 0 {
+		t.Error("expected to receive at least some entries before cancel")
 	}
 }
