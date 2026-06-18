@@ -2,13 +2,15 @@ package main
 
 import (
 	"bytes"
-	"os"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"labproxy/internal/profile"
 )
 
 func TestRunProxiesCLI_JSON(t *testing.T) {
@@ -172,7 +174,7 @@ func TestRunConnectionsCLI_CloseOne(t *testing.T) {
 		t.Errorf("path=%s want /connections/conn-xyz", gotPath)
 	}
 	var env struct {
-		OK   bool   `json:"ok"`
+		OK   bool `json:"ok"`
 		Data struct {
 			Closed string `json:"closed"`
 		} `json:"data"`
@@ -206,7 +208,7 @@ func TestRunConnectionsCLI_CloseAll(t *testing.T) {
 		t.Errorf("path=%s want /connections (all)", gotPath)
 	}
 	var env struct {
-		OK   bool   `json:"ok"`
+		OK   bool `json:"ok"`
 		Data struct {
 			Closed string `json:"closed"`
 		} `json:"data"`
@@ -537,5 +539,133 @@ func TestRunLogsCLI_LevelFlag(t *testing.T) {
 	}
 	if gotLevel != "warning" {
 		t.Errorf("level=%s want warning", gotLevel)
+	}
+}
+
+func TestRunProfileCLI_CreateFromCurrent(t *testing.T) {
+	home := t.TempDir()
+	labDir := home + "/.labproxy"
+	os.MkdirAll(labDir, 0o755)
+	// 当前 mixin.yaml + rules
+	os.WriteFile(labDir+"/mixin.yaml", []byte("system-proxy:\n  enable: true\n"), 0o644)
+	os.WriteFile(labDir+"/rules.yaml", []byte("rules:\n  - MATCH,DIRECT\n"), 0o644)
+
+	var out bytes.Buffer
+	code := runProfileCLI(&out, &out, []string{"create", "snap1", "--json"}, home)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Data.Name != "snap1" {
+		t.Errorf("result wrong: %+v", env)
+	}
+	// profile 应存在
+	if _, err := os.Stat(labDir + "/profiles/snap1/mixin.yaml"); err != nil {
+		t.Errorf("profile not created: %v", err)
+	}
+}
+
+func TestRunProfileCLI_List(t *testing.T) {
+	home := t.TempDir()
+	s, _ := profile.NewStore(home + "/.labproxy")
+	s.Create(profile.Profile{Name: "a", Mixin: []byte("x\n"), Rules: []byte("y\n")})
+	s.Create(profile.Profile{Name: "b", Mixin: []byte("x\n"), Rules: []byte("y\n")})
+
+	var out bytes.Buffer
+	code := runProfileCLI(&out, &out, []string{"list", "--json"}, home)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	var env struct {
+		OK   bool     `json:"ok"`
+		Data []string `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out.String())
+	}
+	if !env.OK {
+		t.Fatal("ok=false")
+	}
+	want := map[string]bool{"a": true, "b": true}
+	if len(env.Data) != 2 {
+		t.Fatalf("expected 2 profiles, got %v", env.Data)
+	}
+	for _, n := range env.Data {
+		if !want[n] {
+			t.Errorf("unexpected %q", n)
+		}
+	}
+}
+
+func TestRunProfileCLI_Delete(t *testing.T) {
+	home := t.TempDir()
+	s, _ := profile.NewStore(home + "/.labproxy")
+	s.Create(profile.Profile{Name: "tmp", Mixin: []byte("x\n"), Rules: []byte("y\n")})
+
+	var out bytes.Buffer
+	code := runProfileCLI(&out, &out, []string{"delete", "tmp", "--json"}, home)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	var env struct {
+		OK bool `json:"ok"`
+	}
+	json.Unmarshal(out.Bytes(), &env)
+	if !env.OK {
+		t.Error("expected ok=true")
+	}
+	if _, err := os.Stat(home + "/.labproxy/profiles/tmp"); !os.IsNotExist(err) {
+		t.Errorf("profile should be removed: %v", err)
+	}
+}
+
+func TestRunProfileCLI_UseAppliesMixin(t *testing.T) {
+	home := t.TempDir()
+	labDir := home + "/.labproxy"
+	os.MkdirAll(labDir, 0o755)
+	// 先建一个 profile，mixin 含特定内容
+	s, _ := profile.NewStore(labDir)
+	s.Create(profile.Profile{Name: "work", Mixin: []byte("system-proxy:\n  enable: false\n"), Rules: []byte("rules: []\n")})
+	// 当前 mixin 是另一份
+	os.WriteFile(labDir+"/mixin.yaml", []byte("system-proxy:\n  enable: true\n"), 0o644)
+
+	var out bytes.Buffer
+	code := runProfileCLI(&out, &out, []string{"use", "work", "--json"}, home)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, out.String())
+	}
+	// mixin.yaml 应被覆写为 profile 的内容
+	got, _ := os.ReadFile(labDir + "/mixin.yaml")
+	if string(got) != "system-proxy:\n  enable: false\n" {
+		t.Errorf("mixin not applied: %q", got)
+	}
+}
+
+func TestRunProfileCLI_UseNotFound(t *testing.T) {
+	home := t.TempDir()
+	os.MkdirAll(home+"/.labproxy", 0o755)
+	var out bytes.Buffer
+	code := runProfileCLI(&out, &out, []string{"use", "nope", "--json"}, home)
+	if code == 0 {
+		t.Fatal("expected non-zero exit")
+	}
+	var env struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	json.Unmarshal(out.Bytes(), &env)
+	if env.OK {
+		t.Error("expected ok=false")
+	}
+	if !strings.Contains(env.Error, "nope") {
+		t.Errorf("error should mention nope: %q", env.Error)
 	}
 }

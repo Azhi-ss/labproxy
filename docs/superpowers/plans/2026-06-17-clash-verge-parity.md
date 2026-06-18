@@ -121,10 +121,10 @@
   - 验收：CRUD 测试、原子写入复用 rules store 模式。
   - commit: 本任务（internal/profile Store CRUD + 原子写入）
 
-- [ ] **T5.2** CLI `labproxy profile [list|use|create|delete]`
+- [x] **T5.2** CLI `labproxy profile [list|use|create|delete]`
   - `use` 切换 = 应用整套覆写到 runtime 并重启。
   - 验收：切换后 runtime 与 profile 一致；`--json`。
-  - commit: -
+  - commit: 本任务（profile_cli.go + main/proxyctl 接线）
 
 ### Phase 6：DNS 可视化（MEDIUM）
 

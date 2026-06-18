@@ -45,6 +45,11 @@ func main() {
 		os.Exit(runLogsCLI(os.Stdout, os.Stderr, args, home, ep, sec))
 	}
 
+	if len(os.Args) >= 2 && os.Args[1] == "profile" {
+		home := os.Getenv("HOME")
+		os.Exit(runProfileCLI(os.Stdout, os.Stderr, os.Args[2:], home))
+	}
+
 	if len(os.Args) >= 2 && (os.Args[1] == "proxies" || os.Args[1] == "connections" || os.Args[1] == "delay" || os.Args[1] == "test") {
 		sub := os.Args[1]
 		args := os.Args[2:]
