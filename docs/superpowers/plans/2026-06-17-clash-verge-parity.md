@@ -116,10 +116,10 @@
 
 ### Phase 5：profile 抽象（MEDIUM）
 
-- [ ] **T5.1** profile 数据模型与存储
+- [x] **T5.1** profile 数据模型与存储
   - `internal/profile/`：profile = mixin + rules + overrides 的命名集合，存 `~/.labproxy/profiles/<name>/`。
   - 验收：CRUD 测试、原子写入复用 rules store 模式。
-  - commit: -
+  - commit: 本任务（internal/profile Store CRUD + 原子写入）
 
 - [ ] **T5.2** CLI `labproxy profile [list|use|create|delete]`
   - `use` 切换 = 应用整套覆写到 runtime 并重启。
