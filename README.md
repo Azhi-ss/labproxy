@@ -1,7 +1,5 @@
 # LabProxy
 
-<img src="resources/hero-banner.png" alt="LabProxy Banner" width="100%"/>
-
 <p align="center">
   <strong>简体中文</strong> | <a href="./README.en.md">English</a>
 </p>
@@ -13,7 +11,7 @@
   <img src="https://img.shields.io/github/languages/top/Azhi-ss/labproxy" alt="Language">
 </p>
 
-<p align="center"><b>专为实验室/共享服务器设计的用户空间代理管理工具</b></p>
+<p align="center"><b>终端原生的代理控制面 · agent-native · clash verge 的命令行替代</b></p>
 
 ---
 
@@ -25,15 +23,15 @@
 | 依赖 GUI 或 systemd | ✅ 纯命令行，PID 文件管理 |
 | 端口冲突导致启动失败 | ✅ 自动检测并分配可用端口 |
 | 多用户环境配置冲突 | ✅ 完全隔离的用户目录 |
+| GUI 工具无法被脚本/agent 调用 | ✅ 所有命令支持 `--json`，agent 可直接控制 |
 
-<img src="resources/concept.png" alt="概念示意" width="500" align="right"/>
+**LabProxy** 基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 二次开发，定位为**终端里替代 clash verge 的代理控制面**，并以 **agent-native** 为差异化壁垒：
 
-**LabProxy** 基于 [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) 二次开发，针对实验室场景优化：
-
-- **无特权安装** — 安装到 `~/.labproxy/`，普通用户即可使用
+- **无特权安装** — 安装到 `~/.labproxy/`，普通用户即可使用；自动检测内核（内置 zip / brew / PATH / 在线下载，跨 macOS 与 Linux）
 - **智能端口** — 7890/9090 被占用？自动寻找可用端口
-- **TUI 界面** — 终端下的图形化管理，实时流量/节点/连接
+- **TUI 界面** — 终端下的图形化管理：分组/节点选择、连接管理（断连）、批量测速、实时日志、规则编辑
 - **Web 控制台** — 浏览器管理，支持密钥保护
+- **agent-native CLI** — `status`/`proxies`/`connections`/`delay`/`test`/`logs`/`dns`/`profile`/`doctor` 全部支持 `--json`，统一 `{ok, data, error}` 信封，便于脚本与 AI agent 解析
 - **自动订阅转换** — 内置 subconverter，兼容各种订阅格式
 
 ---
@@ -183,29 +181,22 @@ labproxy rules providers refresh google
 labproxy tui
 ```
 
-<img src="resources/tui-art.png" alt="TUI" width="100%"/>
-
 **快捷键**
 | 键位 | 功能 |
 |-----|------|
 | `↑/↓` 或 `j/k` | 导航 |
-| `Tab` / `←/→` | 切换面板 (Groups / Options / Settings) |
-| `Enter` | 执行 |
+| `Tab` / `←/→` | 切换面板 (Groups / Options / Connections) |
+| `Enter` | 执行 / 选中 |
+| `d` / `D` | 关闭当前连接 / 关闭全部连接（连接面板，二次确认） |
+| `T` | 批量测速当前组 |
+| `L` | 实时日志覆盖视图（`l` 切级别，`esc` 退出） |
+| `R` | 规则管理弹窗 |
 | `s` | 聚焦 Settings |
 | `m` | 切换代理模式 |
 | `p` | 切换 system proxy |
 | `r` | 刷新延迟 |
 | `/` | 搜索 |
 | `q` | 退出 |
-
-<details>
-<summary><b>📸 真实界面截图</b></summary>
-
-| CLI 命令行 | TUI 界面 |
-|:---:|:---:|
-| <img src="resources/image.png" width="400"/> | <img src="resources/tui.png" width="400"/> |
-
-</details>
 
 > **维护者提示**：修改 TUI 源码后执行 `VERSION=dev bash scripts/build-tui.sh` 重新生成预编译包。
 

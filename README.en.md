@@ -1,7 +1,5 @@
 # LabProxy
 
-<img src="resources/hero-banner.png" alt="LabProxy Banner" width="100%"/>
-
 <p align="center">
   <a href="./README.md">简体中文</a> | <strong>English</strong>
 </p>
@@ -13,7 +11,7 @@
   <img src="https://img.shields.io/github/languages/top/Azhi-ss/labproxy" alt="Language">
 </p>
 
-<p align="center"><b>A user-space proxy manager built for labs and shared servers</b></p>
+<p align="center"><b>Terminal-native proxy control plane · agent-native · the CLI alternative to clash verge</b></p>
 
 ---
 
@@ -25,15 +23,15 @@
 | Depends on GUI or systemd | ✅ CLI-only, PID-file based management |
 | Fails to start when ports conflict | ✅ Automatically detects and assigns available ports |
 | Conflicts in multi-user environments | ✅ Fully isolated per-user directory |
+| GUI tools can't be driven by scripts/agents | ✅ Every command supports `--json` for agent control |
 
-<img src="resources/concept.png" alt="Concept Diagram" width="500" align="right"/>
+**LabProxy** is based on [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) and positioned as **a terminal-native control plane replacing clash verge**, with **agent-native** as its differentiator:
 
-**LabProxy** is based on [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) and optimized for lab/shared-server scenarios:
-
-- **Unprivileged install** — installs into `~/.labproxy/`, works for regular users
+- **Unprivileged install** — installs into `~/.labproxy/`, works for regular users; auto-detects kernel (bundled zip / brew / PATH / online download, across macOS and Linux)
 - **Smart port handling** — 7890/9090 already taken? It automatically finds available ports
-- **TUI interface** — terminal-native management with live traffic, proxy, and connection views
+- **TUI interface** — terminal-native management: group/node selection, connection management (close), batch delay test, live logs, rule editing
 - **Web dashboard** — browser-based management with secret protection
+- **agent-native CLI** — `status`/`proxies`/`connections`/`delay`/`test`/`logs`/`dns`/`profile`/`doctor` all support `--json` with a unified `{ok, data, error}` envelope for scripts and AI agents
 - **Automatic subscription conversion** — built-in subconverter for multiple subscription formats
 
 ---
@@ -183,29 +181,22 @@ Supported rule types: `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX
 labproxy tui
 ```
 
-<img src="resources/tui-art.png" alt="TUI" width="100%"/>
-
 **Hotkeys**
 | Key | Action |
 |-----|------|
 | `↑/↓` or `j/k` | navigate |
-| `Tab` / `←/→` | switch panels (Groups / Options / Settings) |
-| `Enter` | apply |
+| `Tab` / `←/→` | switch panels (Groups / Options / Connections) |
+| `Enter` | apply / select |
+| `d` / `D` | close current connection / close all (Connections panel, confirm twice) |
+| `T` | batch delay test for current group |
+| `L` | live log overlay (`l` to change level, `esc` to exit) |
+| `R` | rules management modal |
 | `s` | focus Settings |
 | `m` | switch proxy mode |
 | `p` | toggle system proxy |
 | `r` | refresh delay |
 | `/` | search |
 | `q` | quit |
-
-<details>
-<summary><b>📸 Real UI Screenshots</b></summary>
-
-| CLI | TUI |
-|:---:|:---:|
-| <img src="resources/image.png" width="400"/> | <img src="resources/tui.png" width="400"/> |
-
-</details>
 
 > **Maintainer note**: after changing TUI source code, run `VERSION=dev bash scripts/build-tui.sh` to regenerate prebuilt archives.
 
