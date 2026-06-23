@@ -138,7 +138,7 @@ var currentLang = LangEn
 var dicts = map[Language]Dict{
 	LangEn: {
 		AppTitle:          "LabProxy",
-		PressSForSettings: "press s for settings",
+		PressSForSettings: "press 5 for config",
 
 		AppSubtitle:    "labproxy",
 		HelpTitle:      "Keybindings",
@@ -249,7 +249,7 @@ var dicts = map[Language]Dict{
 	},
 	LangZh: {
 		AppTitle:          "LabProxy",
-		PressSForSettings: "\u6309 s \u6253\u5f00\u8bbe\u7f6e",
+		PressSForSettings: "\u6309 5 \u6253\u5f00\u914d\u7f6e",
 
 		AppSubtitle:    "labproxy",
 		HelpTitle:      "\u5feb\u6377\u952e",

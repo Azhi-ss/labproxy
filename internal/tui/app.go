@@ -3,8 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // RulesModal is the contract for the rules modal — implemented in internal/tui/rules.
@@ -166,8 +163,7 @@ type model struct {
 	activeView    viewID
 	groupIndex    int
 	optionIndex   int
-	settingsIndex int
-	settingsMode  bool
+		settingsIndex int
 
 	connIndex        int    // 连接面板选中行
 	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
@@ -192,24 +188,6 @@ type model struct {
 	statusLine string
 	lastError  error
 	rulesModal RulesModal
-}
-
-type settingAction int
-
-const (
-	settingCycleMode settingAction = iota
-	settingToggleSystemProxy
-	settingToggleAllowLan
-	settingToggleTun
-	settingRestart
-)
-
-type settingItem struct {
-	Label    string
-	Value    string // styled display value for UI rendering
-	RawValue bool   // plain bool for data comparison (toggle items only)
-	Hint     string
-	Action   settingAction
 }
 
 func newModel(client *proxy.Client, opts Options) model {
@@ -303,12 +281,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyState(msg.data)
 		m.statusLine = msg.status
 		m.lastError = nil
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case errMsg:
 		m.lastError = msg.err
 		m.statusLine = msg.err.Error()
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case configFlagsMsg:
 		m.systemProxyEnabled = msg.systemProxyEnabled
@@ -316,11 +294,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tunEnabled = msg.tunEnabled
 		m.statusLine = msg.status
 		m.lastError = nil
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case tea.KeyMsg:
 		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
-		if !m.searchMode && !m.settingsMode {
+		if !m.searchMode && m.activeView != viewConfig {
 			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
 				// 切离 viewLogs：停止订阅
 				if m.activeView == viewLogs && v != viewLogs && m.logCancel != nil {
@@ -407,10 +385,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case m.settingsMode:
+		case m.activeView == viewConfig:
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-				m.settingsMode = false
+				m.activeView = viewProxies
 				m.statusLine = T().SettingsClosed
 				return m, nil
 			case key.Matches(msg, m.keys.Up):
@@ -437,10 +415,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searchMode = true
 			m.search.Focus()
 			m.statusLine = T().TypeToFilter
-			return m, nil
-		case key.Matches(msg, m.keys.Settings):
-			m.settingsMode = true
-			m.statusLine = T().SettingsOpenHint
 			return m, nil
 		case key.Matches(msg, m.keys.Mode):
 			return m, m.cycleModeCmd()
@@ -495,12 +469,8 @@ func (m model) View() string {
 		return T().Loading
 	}
 
-	// 阶段过渡：后续按 activeView 分派 body，当前仍走旧三栏。
+	// 按 activeView 分派 body。
 	_ = m.activeView
-
-	if m.settingsMode {
-		return m.renderSettingsOverlay()
-	}
 
 	header := m.renderHeader()
 	footer := m.renderFooter()
@@ -736,203 +706,6 @@ func (m model) switchProxyCmd() tea.Cmd {
 	}
 }
 
-func (m model) cycleModeCmd() tea.Cmd {
-	next := nextMode(m.mode)
-	return func() tea.Msg {
-		persistErr := appconfig.WriteMode(m.mixinConfigPath, next)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-
-		liveErr := m.client.UpdateMode(ctx, next)
-		state, err := m.fetchState(ctx)
-		if err != nil {
-			if liveErr != nil {
-				return errMsg{fmt.Errorf("update mode failed: %v; refresh failed: %w", liveErr, err)}
-			}
-			return errMsg{err}
-		}
-
-		status := fmt.Sprintf(T().ModeToFmt, fallback(state.config.Mode, next))
-		switch {
-		case persistErr == nil && liveErr == nil:
-		case persistErr != nil && liveErr == nil:
-			status += fmt.Sprintf(T().ModeSaveFailedFmt, persistErr)
-		case persistErr == nil && liveErr != nil:
-			status = fmt.Sprintf(T().ModeApplyFailedFmt, next, liveErr)
-		default:
-			return errMsg{fmt.Errorf("save mode: %v; live apply: %v", persistErr, liveErr)}
-		}
-
-		return settingsResultMsg{status: status, data: state}
-	}
-}
-
-func (m model) toggleSystemProxyCmd() tea.Cmd {
-	next := !m.systemProxyEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteSystemProxyEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		sysEnabled, err := appconfig.ReadSystemProxyEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
-			systemProxyEnabled: sysEnabled,
-			allowLanEnabled:    m.allowLanEnabled,
-			tunEnabled:         m.tunEnabled,
-		}
-	}
-}
-
-func (m model) activateSettingCmd() tea.Cmd {
-	items := m.settingsItems()
-	if len(items) == 0 || m.settingsIndex >= len(items) {
-		return nil
-	}
-
-	switch items[m.settingsIndex].Action {
-	case settingCycleMode:
-		return m.cycleModeCmd()
-	case settingToggleSystemProxy:
-		return m.toggleSystemProxyCmd()
-	case settingToggleAllowLan:
-		return m.toggleAllowLanCmd()
-	case settingToggleTun:
-		return m.toggleTunCmd()
-	case settingRestart:
-		return m.restartRuntimeCmd()
-	default:
-		return nil
-	}
-}
-
-func (m model) toggleAllowLanCmd() tea.Cmd {
-	next := !m.allowLanEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteAllowLanEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		lanEnabled, err := appconfig.ReadAllowLanEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
-			systemProxyEnabled: m.systemProxyEnabled,
-			allowLanEnabled:    lanEnabled,
-			tunEnabled:         m.tunEnabled,
-		}
-	}
-}
-
-func (m model) toggleTunCmd() tea.Cmd {
-	next := !m.tunEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteTunEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		tunEnabled, err := appconfig.ReadTunEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
-			systemProxyEnabled: m.systemProxyEnabled,
-			allowLanEnabled:    m.allowLanEnabled,
-			tunEnabled:         tunEnabled,
-		}
-	}
-}
-
-// validateRestartCommand rejects shell metacharacters that could enable
-// command injection through the user-supplied restart command. It allows
-// && (logical AND used for chaining source + command) but rejects
-// standalone & (background operator).
-func validateRestartCommand(cmd string) error {
-	for i := 0; i < len(cmd); i++ {
-		ch := cmd[i]
-		switch ch {
-		case ';', '|', '$', '`', '(', ')', '<', '>', '\n', '\r':
-			return fmt.Errorf(T().RestartValidateErrFmt, ch)
-		case '&':
-			// Allow && (shell AND) but reject standalone & (background)
-			if i+1 >= len(cmd) || cmd[i+1] != '&' {
-				return fmt.Errorf(T().RestartValidateErrFmt, ch)
-			}
-			i++ // skip second &
-		}
-	}
-	return nil
-}
-
-func (m model) restartRuntimeCmd() tea.Cmd {
-	if strings.TrimSpace(m.restartCommand) == "" {
-		return func() tea.Msg {
-			state, err := m.refreshSettingsOnly()
-			if err != nil {
-				return errMsg{err}
-			}
-			return settingsResultMsg{
-				status: T().RestartUnavailable,
-				data:   state,
-			}
-		}
-	}
-
-	if err := validateRestartCommand(m.restartCommand); err != nil {
-		return func() tea.Msg {
-			return errMsg{err}
-		}
-	}
-
-	return func() tea.Msg {
-		cmd := exec.Command("bash", "-lc", m.restartCommand)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			message := strings.TrimSpace(string(output))
-			if message != "" {
-				return errMsg{fmt.Errorf("restart failed: %w: %s", err, message)}
-			}
-			return errMsg{fmt.Errorf("restart failed: %w", err)}
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		state, refreshErr := m.fetchState(ctx)
-		if refreshErr != nil {
-			return errMsg{fmt.Errorf("restart succeeded but refresh failed: %w", refreshErr)}
-		}
-		return settingsResultMsg{status: T().RuntimeRestarted, data: state}
-	}
-}
-
-func (m model) refreshSettingsOnly() (refreshMsg, error) {
-	state := refreshMsg{
-		version:     proxy.Version{Version: m.version},
-		config:      proxy.Config{Mode: m.mode},
-		traffic:     proxy.Traffic{Up: m.up, Down: m.down},
-		proxies:     m.rawProxies,
-		connections: m.connections,
-	}
-	var err error
-	state.systemProxyEnabled, err = appconfig.ReadSystemProxyEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	state.allowLanEnabled, err = appconfig.ReadAllowLanEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	state.tunEnabled, err = appconfig.ReadTunEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	return state, nil
-}
-
 func tickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
@@ -1007,128 +780,6 @@ func (m model) renderBody(availableHeight int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
 }
 
-func (m model) renderSettingsOverlay() string {
-	contentWidth := 32
-	// padding(1,2)=4 + border(2)=2 → total extra 6
-	totalWidth := contentWidth + 6
-
-	modalStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 2).
-		Width(totalWidth)
-
-	title := titleStyle.Render(T().SettingsTitle)
-	subtitle := mutedStyle.Render(T().SettingsHint)
-
-	rows := m.visibleSettingRows(contentWidth, 5)
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		subtitle,
-		"",
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
-	)
-
-	modal := modalStyle.Render(content)
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
-}
-
-func (m model) settingsItems() []settingItem {
-	restartHint := T().HintRestartShell
-	if strings.TrimSpace(m.restartCommand) != "" {
-		restartHint = T().HintRestartMixin
-	}
-	return []settingItem{
-		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), RawValue: false, Hint: T().HintCycle, Action: settingCycleMode},
-		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), RawValue: m.systemProxyEnabled, Hint: T().HintNewShells, Action: settingToggleSystemProxy},
-		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), RawValue: m.allowLanEnabled, Hint: T().HintRestart, Action: settingToggleAllowLan},
-		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), RawValue: m.tunEnabled, Hint: T().HintRestart, Action: settingToggleTun},
-		{Label: T().SettingLabelRestart, Value: "", RawValue: false, Hint: restartHint, Action: settingRestart},
-	}
-}
-
-func (m model) visibleSettingRows(width, limit int) []string {
-	if limit <= 0 || width <= 0 {
-		return nil
-	}
-	items := m.settingsItems()
-	if len(items) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoSettingsAvailable), width)}
-	}
-	start, end := window(m.settingsIndex, len(items), limit)
-	rows := make([]string, 0, end-start)
-	for idx := start; idx < end; idx++ {
-		item := items[idx]
-		isSelected := idx == m.settingsIndex
-		prefix := "  "
-		if isSelected {
-			prefix = "▸ "
-		}
-
-		baseStyle := lipgloss.NewStyle()
-		if isSelected {
-			baseStyle = selectedStyle
-		}
-
-		var valueStyle lipgloss.Style
-		var valueStrPlain string
-		switch item.Action {
-		case settingCycleMode:
-			valueStrPlain = strings.ToLower(strings.TrimSpace(item.Value))
-			valueStyle = getModeStyle(valueStrPlain)
-		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
-			isOn := item.RawValue
-			valueStrPlain = T().BoolOff
-			valueStyle = offStyle
-			if isOn {
-				valueStrPlain = T().BoolOn
-				valueStyle = onStyle
-			}
-		case settingRestart:
-			valueStrPlain = T().ValueRestart
-			valueStyle = lipgloss.NewStyle().Foreground(colorInfo).Bold(true)
-		default:
-			valueStrPlain = item.Value
-			valueStyle = mutedStyle
-		}
-
-		if isSelected {
-			valueStyle = valueStyle.Inherit(selectedStyle).Foreground(valueStyle.GetForeground())
-		}
-
-		hintPart := ""
-		hintWidth := 0
-		if isSelected && item.Hint != "" {
-			hintPart = "  " + item.Hint
-			hintWidth = ansi.StringWidth(hintPart)
-		}
-
-		reserved := ansi.StringWidth(prefix) + 2 + ansi.StringWidth(valueStrPlain) + hintWidth
-		labelWidth := width - reserved
-		if labelWidth < 4 {
-			labelWidth = 4
-		}
-		truncatedLabel := ansi.Truncate(item.Label, labelWidth, "…")
-
-		line := baseStyle.Render(prefix+truncatedLabel+"  ") +
-			valueStyle.Render(valueStrPlain)
-
-		if hintPart != "" {
-			hintStyle := mutedStyle
-			if isSelected {
-				hintStyle = hintStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
-			}
-			line += hintStyle.Render(hintPart)
-		}
-
-		rows = append(rows, fitStyledLine(line, width, baseStyle))
-	}
-	return rows
-}
-
 func (m model) renderFooter() string {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if docWidth <= 0 {
@@ -1142,19 +793,6 @@ func (m model) renderFooter() string {
 	}
 	row := lipgloss.JoinVertical(lipgloss.Left, fitLine(left, innerWidth), helpView)
 	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(row))
-}
-
-func getModeStyle(mode string) lipgloss.Style {
-	switch mode {
-	case "rule":
-		return lipgloss.NewStyle().Foreground(colorSuccess)
-	case "global":
-		return lipgloss.NewStyle().Foreground(colorWarning)
-	case "direct":
-		return lipgloss.NewStyle().Foreground(colorInfo)
-	default:
-		return mutedStyle
-	}
 }
 
 func (m model) focusLabel() string {

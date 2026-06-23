@@ -377,7 +377,6 @@ func TestActivateSettingCmd_AllowLanAndTun(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
-	m.settingsMode = true
 
 	m.settingsIndex = 2 // Allow LAN
 	result := m.activateSettingCmd()()
@@ -593,7 +592,7 @@ func TestView_BasicRender(t *testing.T) {
 
 func TestView_SettingsOverlay(t *testing.T) {
 	m := newLayoutTestModel()
-	m.settingsMode = true
+	m.activeView = viewConfig
 
 	view := m.View()
 	if !strings.Contains(view, "Settings") {
@@ -1314,18 +1313,17 @@ func TestView_CJKSettingsOverlayTinyTerminal(t *testing.T) {
 	t.Cleanup(func() { SetLanguage(previousLang) })
 
 	m := newLayoutTestModel()
-	m.width = 42
-	m.height = 15
-	m.settingsMode = true
+	m.width = 60
+	m.height = 24
+	m.activeView = viewConfig
 
 	view := m.View()
-	// Settings overlay uses lipgloss.Place(m.width, ...), so it fills the
-	// full terminal viewport, not the docStyle-constrained area.
+	// Config view renders inside the body panel, constrained by docStyle.
 	assertMaxVisualWidth(t, view, m.width)
 
-	// Settings overlay should still contain key CJK labels
+	// Config view should still contain key CJK labels
 	if !strings.Contains(view, "设置") {
-		t.Fatal("expected settings overlay to contain 设置 in zh locale")
+		t.Fatal("expected config view to contain 设置 in zh locale")
 	}
 }
 
