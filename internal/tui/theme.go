@@ -65,7 +65,7 @@ var (
 	fitLineStyle = lipgloss.NewStyle()
 )
 
-// getDelayStyle 按延迟返回色阶样式：<50 绿 / <150 黄 / <300 橙 / ≥300 红 / -1 暗红 / 0 灰。
+// getDelayStyle 按延迟返回色阶样式：<50 绿 / <150 黄 / <300 橙 / ≥300 红 / -1 红(timeout) / 其余≤0 灰。
 func getDelayStyle(ms int) lipgloss.Style {
 	switch {
 	case ms <= 0:
