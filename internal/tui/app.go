@@ -427,6 +427,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case m.activeView == viewProxies && key.Matches(msg, m.keys.Right):
 			m.moveFocus(1)
 			return m, nil
+		case m.activeView == viewConnections && key.Matches(msg, m.keys.Up):
+			if len(m.connections.Connections) > 0 {
+				m.connIndex = (m.connIndex - 1 + len(m.connections.Connections)) % len(m.connections.Connections)
+			}
+			return m, nil
+		case m.activeView == viewConnections && key.Matches(msg, m.keys.Down):
+			if len(m.connections.Connections) > 0 {
+				m.connIndex = (m.connIndex + 1) % len(m.connections.Connections)
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Up):
 			m.move(-1)
 			return m, nil
