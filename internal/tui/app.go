@@ -9,7 +9,6 @@ import (
 	appconfig "labproxy/internal/config"
 	"labproxy/internal/proxy"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -64,34 +63,6 @@ const maxLogEntries = 500
 
 // logLevels 是 l 键循环切换的日志级别顺序。
 var logLevels = []string{"info", "warning", "error", "debug"}
-
-type keyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Left        key.Binding
-	Right       key.Binding
-	Tab         key.Binding
-	Select      key.Binding
-	Refresh     key.Binding
-	Search      key.Binding
-	Settings    key.Binding
-	Mode        key.Binding
-	SystemProxy key.Binding
-	Back        key.Binding
-	Quit        key.Binding
-	TestGroup   key.Binding
-}
-
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Select, k.Refresh, k.Search, k.Settings, k.Mode, k.SystemProxy, k.Back, k.Quit},
-	}
-}
 
 type refreshMsg struct {
 	version            proxy.Version
@@ -183,7 +154,7 @@ type model struct {
 
 	search     textinput.Model
 	searchMode bool
-	help       help.Model
+	helpMode   bool
 	keys       keyMap
 	statusLine string
 	lastError  error
@@ -207,29 +178,9 @@ func newModel(client *proxy.Client, opts Options) model {
 		width:              120,
 		height:             32,
 		search:             search,
-		help: func() help.Model {
-			h := help.New()
-			h.Width = max(0, 120-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
-			return h
-		}(),
 		statusLine: T().StatusConnecting,
 		rulesModal: opts.RulesModal,
-		keys: keyMap{
-			Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", T().HelpMoveUp)),
-			Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", T().HelpMoveDown)),
-			Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", T().HelpFocusLeft)),
-			Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", T().HelpFocusRight)),
-			Tab:         key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", T().HelpSwitchPane)),
-			Select:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", T().HelpApplySelect)),
-			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", T().HelpRefreshDelay)),
-			Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", T().HelpSearch)),
-			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", T().HelpSettings)),
-			Mode:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", T().HelpCycleMode)),
-			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", T().HelpToggleProxyPref)),
-			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
-			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
-			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
-		},
+		keys:       defaultKeyMap(),
 	}
 }
 
@@ -243,7 +194,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, msg.Width)
 		m.height = max(1, msg.Height)
 		m.search.Width = min(28, max(12, m.width/4))
-		m.help.Width = max(0, m.width-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
 		m.rebuildGroups()
 		return m, nil
 	case tickMsg:
@@ -296,6 +246,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeView = viewProxies
 		return m, nil
 	case tea.KeyMsg:
+		// ? 帮助浮层（最高优先级，输入态时不拦截）
+		if !m.searchMode && msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '?' {
+			m.helpMode = !m.helpMode
+			return m, nil
+		}
+
 		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
 		if !m.searchMode && m.activeView != viewConfig {
 			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
@@ -482,8 +438,9 @@ func (m model) View() string {
 		return T().Loading
 	}
 
-	// 按 activeView 分派 body。
-	_ = m.activeView
+	if m.helpMode {
+		return m.renderHelpOverlay()
+	}
 
 	header := m.renderHeader()
 	footer := m.renderFooter()
@@ -723,48 +680,6 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func (m model) renderHeader() string {
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	if docWidth <= 0 {
-		return ""
-	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	titleRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		titleStyle.Render(T().AppTitle),
-		"  ",
-		subtitleStyle.Render(T().PressSForSettings),
-	)
-
-	metaRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		statusPill(T().PillEndpoint, fallback(m.endpoint, "-")),
-		statusPill(T().PillMode, modeLabel(m.mode)),
-		statusPill(T().PillProxy, boolLabel(m.systemProxyEnabled)),
-		statusPill(T().PillLan, boolLabel(m.allowLanEnabled)),
-		statusPill(T().PillTun, boolLabel(m.tunEnabled)),
-		statusPill("↑", formatBytes(m.up)),
-		statusPill("↓", formatBytes(m.down)),
-		statusPill(T().PillFocus, m.focusLabel()),
-	)
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		fitLine(titleRow, innerWidth),
-		"",
-		fitLine(metaRow, innerWidth),
-	)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(content))
-}
-
-func statusPill(label, value string) string {
-	pill := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("237")).
-		Padding(0, 1)
-	return pill.Render(fmt.Sprintf("%s %s", mutedStyle.Render(label), value))
-}
-
 func (m model) renderBody(availableHeight int) string {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if availableHeight <= 0 || docWidth <= 0 {
@@ -791,28 +706,4 @@ func (m model) renderBody(availableHeight int) string {
 		rest = m.renderProxiesView(contentWidth, availableHeight)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
-}
-
-func (m model) renderFooter() string {
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	if docWidth <= 0 {
-		return ""
-	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	helpView := fitLine(mutedStyle.Render(m.help.View(m.keys)), innerWidth)
-	left := statusStyle.Render(fallback(m.statusLine, T().StatusReady))
-	if m.searchMode {
-		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle.Render(T().SearchLabel), m.search.View())
-	}
-	row := lipgloss.JoinVertical(lipgloss.Left, fitLine(left, innerWidth), helpView)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(row))
-}
-
-func (m model) focusLabel() string {
-	switch m.focus {
-	case focusGroups:
-		return T().FocusGroupsLabel
-	default:
-		return T().FocusOptionsLabel
-	}
 }
