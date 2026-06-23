@@ -3,11 +3,11 @@ package tui
 import (
 	"fmt"
 	"net/http"
-	"sync"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -215,7 +215,7 @@ func TestUpdate_KeyMsg_CtrlC(t *testing.T) {
 func TestUpdate_KeyMsg_Tab(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.focus = focusGroups
+	m.activeView = viewProxies
 
 	msg := tea.KeyMsg{Type: tea.KeyTab}
 	newModel, cmd := m.Update(msg)
@@ -224,8 +224,8 @@ func TestUpdate_KeyMsg_Tab(t *testing.T) {
 		t.Fatal("expected nil command for tab key")
 	}
 	newM := newModel.(model)
-	if newM.focus != focusOptions {
-		t.Fatalf("expected focus to be options, got %d", newM.focus)
+	if newM.activeView != viewConnections {
+		t.Fatalf("expected activeView to cycle to connections, got %d", newM.activeView)
 	}
 }
 
