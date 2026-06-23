@@ -14,6 +14,8 @@ type Dict struct {
 	AppTitle          string
 	PressSForSettings string
 
+		AppSubtitle string // 顶部副标题
+		HelpTitle   string
 	// Nav bar (viewID labels)
 	NavProxies     string
 	NavConnections string
@@ -138,6 +140,9 @@ var dicts = map[Language]Dict{
 		AppTitle:          "LabProxy",
 		PressSForSettings: "press s for settings",
 
+		AppSubtitle:    "labproxy",
+		HelpTitle:      "Keybindings",
+
 		NavProxies:     "Proxies",
 		NavConnections: "Connections",
 		NavLogs:        "Logs",
@@ -245,6 +250,9 @@ var dicts = map[Language]Dict{
 	LangZh: {
 		AppTitle:          "LabProxy",
 		PressSForSettings: "\u6309 s \u6253\u5f00\u8bbe\u7f6e",
+
+		AppSubtitle:    "labproxy",
+		HelpTitle:      "\u5feb\u6377\u952e",
 
 		NavProxies:     "\u4ee3\u7406",
 		NavConnections: "\u8fde\u63a5",
