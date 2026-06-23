@@ -1715,11 +1715,14 @@ func TestUpdate_LogOverlayToggle(t *testing.T) {
 	client := proxy.NewClient(srv.URL, "")
 	m := newModel(client, Options{Endpoint: srv.URL})
 
-	// L 进入日志模式
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	// 按 "3" 切换到 Logs 视图，自动启动订阅
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	um := updated.(model)
-	if !um.logMode {
-		t.Fatal("expected logMode true after L")
+	if um.activeView != viewLogs {
+		t.Fatal("expected activeView == viewLogs after 3")
+	}
+	if !um.logActive {
+		t.Fatal("expected logActive true after switching to viewLogs")
 	}
 	if cmd == nil {
 		t.Fatal("expected logs subscription cmd")
@@ -1740,19 +1743,18 @@ func TestUpdate_LogOverlayToggle(t *testing.T) {
 func TestUpdate_LogOverlayExit(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
+	m.activeView = viewLogs
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	um := updated.(model)
-	if um.logMode {
-		t.Error("expected logMode false after esc")
+	if um.activeView != viewProxies {
+		t.Errorf("expected activeView == viewProxies after esc, got %v", um.activeView)
 	}
 }
 
 func TestUpdate_LogBufferTruncation(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
 
 	// 注入 600 条，应截断到 maxLogEntries
 	for i := 0; i < 600; i++ {
@@ -1771,7 +1773,7 @@ func TestUpdate_LogBufferTruncation(t *testing.T) {
 func TestUpdate_LogLevelFilter(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
+	m.activeView = viewLogs
 	m.logLevel = "info"
 
 	// l 切换级别

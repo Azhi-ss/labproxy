@@ -302,9 +302,6 @@ func (m model) visibleOptionRows(width, limit int) []string {
 }
 
 // Placeholder stubs — will be replaced by actual implementations in later tasks.
-func (m model) renderLogsView(width, height int) string {
-	return mutedStyle.Render("Logs — coming soon")
-}
 func (m model) renderRulesView(width, height int) string {
 	return mutedStyle.Render("Rules — coming soon")
 }

@@ -83,7 +83,6 @@ type keyMap struct {
 	Quit        key.Binding
 	Rules       key.Binding
 	TestGroup   key.Binding
-	Logs        key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -173,8 +172,7 @@ type model struct {
 	connIndex        int    // 连接面板选中行
 	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
 
-	// 日志覆盖视图
-	logMode    bool               // 是否处于日志覆盖模式
+	// 日志视图
 	logEntries []proxy.LogEntry   // 累积的日志条目（截断到 maxLogEntries）
 	logLevel   string             // 当前订阅级别（debug/info/warning/error）
 	logActive  bool               // 日志流是否正在订阅
@@ -254,7 +252,6 @@ func newModel(client *proxy.Client, opts Options) model {
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
 			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
 			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
-			Logs:        key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logs")),
 		},
 	}
 }
@@ -293,7 +290,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyTestGroupResult(msg)
 		return m, nil
 	case logEntryMsg:
-		// 累积日志并截断；若仍在 logMode 则继续订阅下一条
+		// 累积日志并截断；若仍在订阅则继续订阅下一条
 		m.logEntries = append(m.logEntries, msg.entry)
 		if len(m.logEntries) > maxLogEntries {
 			m.logEntries = m.logEntries[len(m.logEntries)-maxLogEntries:]
@@ -323,15 +320,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
-		if !m.searchMode && !m.settingsMode && !m.logMode {
+		if !m.searchMode && !m.settingsMode {
 			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
+				// 切离 viewLogs：停止订阅
+				if m.activeView == viewLogs && v != viewLogs && m.logCancel != nil {
+					m.logCancel()
+					m.logActive = false
+				}
 				m.activeView = v
 				m.statusLine = v.label()
+				// 切到 viewLogs：启动订阅
+				if v == viewLogs && !m.logActive {
+					m.logActive = true
+					if m.logLevel == "" {
+						m.logLevel = "info"
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					m.logCancel = cancel
+					m.logCtx = ctx
+					return m, tea.Batch(m.logsCmd(ctx))
+				}
 				return m, nil
 			}
 			if key.Matches(msg, m.keys.Tab) {
-				m.activeView = m.activeView.next()
-				m.statusLine = m.activeView.label()
+				next := m.activeView.next()
+				if m.activeView == viewLogs && next != viewLogs && m.logCancel != nil {
+					m.logCancel()
+					m.logActive = false
+				}
+				m.activeView = next
+				m.statusLine = next.label()
+				if next == viewLogs && !m.logActive {
+					m.logActive = true
+					if m.logLevel == "" {
+						m.logLevel = "info"
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					m.logCancel = cancel
+					m.logCtx = ctx
+					return m, tea.Batch(m.logsCmd(ctx))
+				}
 				return m, nil
 			}
 		}
@@ -363,8 +391,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// 日志覆盖模式：esc 退出、l 切级别，其它键交回主循环。
-		if m.logMode {
+		// 日志视图按键：esc 返回代理视图，l 切级别。
+		if m.activeView == viewLogs {
 			if handled, mm, mcmd := m.handleLogKey(msg); handled {
 				return mm, mcmd
 			}
@@ -447,23 +475,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.delayRefreshCmd()
 		case m.activeView == viewProxies && key.Matches(msg, m.keys.TestGroup):
 			return m, m.testGroupCmd()
-		case key.Matches(msg, m.keys.Logs):
-			m.logMode = true
-			m.logActive = true
-			if m.logLevel == "" {
-				m.logLevel = "info"
-			}
-			// 在 model 上创建 ctx+cancel，确保 cancel 存入返回的 m（避免值接收者丢失）
-			ctx, cancel := context.WithCancel(context.Background())
-			m.logCancel = cancel
-			m.logCtx = ctx
-			m.statusLine = T().LogOverlayHint
-			return m, m.logsCmd(ctx)
-		case key.Matches(msg, m.keys.Rules):
-			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
-				m.rulesModal.Open()
-			}
-			return m, nil
 		case key.Matches(msg, m.keys.Select):
 			switch m.focus {
 			case focusGroups:
@@ -489,10 +500,6 @@ func (m model) View() string {
 
 	if m.settingsMode {
 		return m.renderSettingsOverlay()
-	}
-
-	if m.logMode {
-		return m.renderLogOverlay()
 	}
 
 	header := m.renderHeader()
@@ -704,25 +711,6 @@ func (m model) testGroupCmd() tea.Cmd {
 	}
 }
 
-// logsCmd 订阅 mihomo /logs 流，阻塞读一条返回 logEntryMsg。
-// ctx 由调用方创建并存入 model.logCancel，确保退出时可取消。
-// 持续流靠 Update 收到 logEntryMsg 后再次调度 logsCmd（复用同一 ctx，不新建流）。
-func (m model) logsCmd(ctx context.Context) tea.Cmd {
-	level := m.logLevel
-	if level == "" {
-		level = "info"
-	}
-	ch := m.client.Logs(ctx, level)
-
-	return func() tea.Msg {
-		entry, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return logEntryMsg{entry: entry}
-	}
-}
-
 func (m model) switchProxyCmd() tea.Cmd {
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 || m.optionIndex >= len(group.Options) {
@@ -746,63 +734,6 @@ func (m model) switchProxyCmd() tea.Cmd {
 			data:   state,
 		}
 	}
-}
-
-// handleLogKey 处理日志覆盖模式按键：esc/q 退出，l 循环切换级别。
-// 切换级别会清空已累积日志并重新订阅。
-func (m model) handleLogKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
-	// esc / q 退出
-	if msg.Type == tea.KeyEsc {
-		m.stopLogStream()
-		m.logMode = false
-		m.statusLine = T().LogOverlayClosed
-		return true, m, nil
-	}
-	if msg.Type == tea.KeyRunes && string(msg.Runes) == "q" {
-		m.stopLogStream()
-		m.logMode = false
-		m.statusLine = T().LogOverlayClosed
-		return true, m, nil
-	}
-	// l 切换级别
-	if msg.Type == tea.KeyRunes && string(msg.Runes) == "l" {
-		m.stopLogStream() // 停止旧流
-		m.logLevel = nextLogLevel(m.logLevel)
-		m.logEntries = nil
-		// 新建 ctx+cancel 存入 model
-		ctx, cancel := context.WithCancel(context.Background())
-		m.logCancel = cancel
-		m.logCtx = ctx
-		m.logActive = true
-		m.statusLine = fmt.Sprintf(T().LogLevelFmt, m.logLevel)
-		return true, m, m.logsCmd(ctx)
-	}
-	return false, m, nil
-}
-
-// stopLogStream 停止当前日志订阅并重置 active 标志。
-func (m *model) stopLogStream() {
-	m.logActive = false
-	if m.logCancel != nil {
-		m.logCancel()
-		m.logCancel = nil
-	}
-}
-
-// nextLogLevel 在 logLevels 中循环到下一个级别。
-func nextLogLevel(current string) string {
-	if current == "" {
-		current = "info"
-	}
-	for i, l := range logLevels {
-		if l == current {
-			if i+1 < len(logLevels) {
-				return logLevels[i+1]
-			}
-			return logLevels[0]
-		}
-	}
-	return logLevels[0]
 }
 
 func (m model) cycleModeCmd() tea.Cmd {
@@ -1006,7 +937,6 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-
 func (m model) renderHeader() string {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if docWidth <= 0 {
@@ -1075,38 +1005,6 @@ func (m model) renderBody(availableHeight int) string {
 		rest = m.renderProxiesView(contentWidth, availableHeight)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
-}
-
-
-// renderLogOverlay 渲染日志覆盖视图：显示最近 maxLogEntries 条日志，按级别着色。
-func (m model) renderLogOverlay() string {
-	width := max(1, m.width)
-	height := max(1, m.height)
-
-	header := fmt.Sprintf(T().LogOverlayTitle, m.logLevel)
-	body := lipgloss.JoinVertical(lipgloss.Left, header, "")
-	usedHeight := lipgloss.Height(body) + 2 // 标题+空行
-	avail := height - usedHeight
-	if avail < 1 {
-		avail = 1
-	}
-
-	// 取最近 avail 条
-	entries := m.logEntries
-	if len(entries) > avail {
-		entries = entries[len(entries)-avail:]
-	}
-
-	lines := make([]string, 0, len(entries))
-	for _, e := range entries {
-		lines = append(lines, fitLine(fmt.Sprintf("[%s] %s", e.Level, e.Payload), width))
-	}
-	if len(lines) == 0 {
-		lines = append(lines, fitLine(mutedStyle.Render(T().LogWaiting), width))
-	}
-
-	content := strings.Join(lines, "\n")
-	return lipgloss.JoinVertical(lipgloss.Left, header, "", content)
 }
 
 func (m model) renderSettingsOverlay() string {
