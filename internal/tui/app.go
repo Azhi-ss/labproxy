@@ -20,6 +20,7 @@ import (
 type RulesModal interface {
 	IsOpen() bool
 	Open()
+	Close()
 	Update(tea.KeyMsg) bool
 	View() string
 }
@@ -78,12 +79,11 @@ type keyMap struct {
 	SystemProxy key.Binding
 	Back        key.Binding
 	Quit        key.Binding
-	Rules       key.Binding
 	TestGroup   key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Rules, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
@@ -228,7 +228,6 @@ func newModel(client *proxy.Client, opts Options) model {
 			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", T().HelpToggleProxyPref)),
 			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
-			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
 			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
 		},
 	}
@@ -305,6 +304,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logCancel()
 					m.logActive = false
 				}
+				// 切离 viewRules：关闭 rules modal
+				if m.activeView == viewRules && v != viewRules && m.rulesModal != nil {
+					m.rulesModal.Close()
+				}
 				m.activeView = v
 				m.statusLine = v.label()
 				// 切到 viewLogs：启动订阅
@@ -318,6 +321,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logCtx = ctx
 					return m, tea.Batch(m.logsCmd(ctx))
 				}
+				// 切到 viewRules：打开 rules modal
+				if v == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
+					m.rulesModal.Open()
+				}
 				return m, nil
 			}
 			if key.Matches(msg, m.keys.Tab) {
@@ -325,6 +332,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activeView == viewLogs && next != viewLogs && m.logCancel != nil {
 					m.logCancel()
 					m.logActive = false
+				}
+				if m.activeView == viewRules && next != viewRules && m.rulesModal != nil {
+					m.rulesModal.Close()
 				}
 				m.activeView = next
 				m.statusLine = next.label()
@@ -338,11 +348,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.logCtx = ctx
 					return m, tea.Batch(m.logsCmd(ctx))
 				}
+				if next == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
+					m.rulesModal.Open()
+				}
 				return m, nil
 			}
 		}
 
-		if m.rulesModal != nil && m.rulesModal.IsOpen() {
+		if m.activeView == viewRules && m.rulesModal != nil && m.rulesModal.IsOpen() {
 			if m.rulesModal.Update(msg) {
 				return m, nil
 			}
