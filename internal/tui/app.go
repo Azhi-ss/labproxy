@@ -164,6 +164,7 @@ type model struct {
 	connections   proxy.ConnectionsResponse
 	groups        []GroupView
 	focus         paneFocus
+	activeView    viewID
 	groupIndex    int
 	optionIndex   int
 	settingsIndex int
@@ -226,6 +227,7 @@ func newModel(client *proxy.Client, opts Options) model {
 		restartCommand:     opts.RestartCommand,
 		systemProxyEnabled: opts.SystemProxyEnabled,
 		focus:              focusGroups,
+		activeView:         viewProxies,
 		width:              120,
 		height:             32,
 		search:             search,
