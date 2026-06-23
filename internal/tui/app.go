@@ -322,19 +322,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingsMode = false
 		return m, nil
 	case tea.KeyMsg:
-			// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
-			if !m.searchMode && !m.settingsMode && !m.logMode {
-				if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
-					m.activeView = v
-					m.statusLine = v.label()
-					return m, nil
-				}
-				if key.Matches(msg, m.keys.Tab) {
-					m.activeView = m.activeView.next()
-					m.statusLine = m.activeView.label()
-					return m, nil
-				}
+		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
+		if !m.searchMode && !m.settingsMode && !m.logMode {
+			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
+				m.activeView = v
+				m.statusLine = v.label()
+				return m, nil
 			}
+			if key.Matches(msg, m.keys.Tab) {
+				m.activeView = m.activeView.next()
+				m.statusLine = m.activeView.label()
+				return m, nil
+			}
+		}
 
 		if m.rulesModal != nil && m.rulesModal.IsOpen() {
 			if m.rulesModal.Update(msg) {
@@ -473,6 +473,9 @@ func (m model) View() string {
 	if m.width <= 0 {
 		return T().Loading
 	}
+
+	// 阶段过渡：后续按 activeView 分派 body，当前仍走旧三栏。
+	_ = m.activeView
 
 	if m.settingsMode {
 		return m.renderSettingsOverlay()
