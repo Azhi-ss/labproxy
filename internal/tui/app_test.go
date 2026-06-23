@@ -586,8 +586,8 @@ func TestView_BasicRender(t *testing.T) {
 	// Connection details only visible when activeView = viewConnections
 	m.activeView = viewConnections
 	view = m.View()
-	if !strings.Contains(view, "coming soon") {
-		t.Fatal("expected connections view placeholder")
+	if !strings.Contains(view, T().PanelConnections) {
+		t.Fatal("expected connections view to contain panel title")
 	}
 }
 
