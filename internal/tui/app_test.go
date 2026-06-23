@@ -582,9 +582,12 @@ func TestView_BasicRender(t *testing.T) {
 	if !strings.Contains(view, "Connections") {
 		t.Fatal("expected view to contain 'Connections'")
 	}
-	// Settings is now a modal overlay, not in the main view
-	if !strings.Contains(view, "example.com") {
-		t.Fatal("expected view to contain rendered connection target")
+
+	// Connection details only visible when activeView = viewConnections
+	m.activeView = viewConnections
+	view = m.View()
+	if !strings.Contains(view, "coming soon") {
+		t.Fatal("expected connections view placeholder")
 	}
 }
 
