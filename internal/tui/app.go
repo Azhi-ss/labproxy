@@ -1142,68 +1142,6 @@ func (m model) currentGroup() *GroupView {
 	return &m.groups[m.groupIndex]
 }
 
-var (
-	// ── Theme palette ──────────────────────────────────────────────────
-	// Primary: cool cyan-blue for identity & structure
-	colorPrimary = lipgloss.Color("39") // bright blue
-	// Accent: vivid teal for focus & active states
-	colorAccent = lipgloss.Color("86") // bright cyan-green
-	// Surface: background tints for selection & status
-	colorSurfaceHigh = lipgloss.Color("62") // deep indigo — selection bg
-	// Content: text hierarchy
-	colorTextPrimary   = lipgloss.Color("252") // near-white
-	colorTextSecondary = lipgloss.Color("246") // mid-gray
-	colorTextMuted     = lipgloss.Color("243") // dim gray
-	// Semantic: state & delay colors
-	colorSuccess = lipgloss.Color("42")  // green  — low delay / on
-	colorWarning = lipgloss.Color("220") // yellow — mid delay
-	colorInfo    = lipgloss.Color("117") // light blue — informational
-
-	// ── Structural styles ──────────────────────────────────────────────
-	// ── Layout constants ──────────────────────────────────────────────
-	columnGap = 2 // horizontal gap between Groups and Options panels
-
-	docStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-
-	headerStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(0, 1)
-
-	panelBaseStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1)
-
-	activePanelStyle   = panelBaseStyle.BorderForeground(colorAccent)
-	inactivePanelStyle = panelBaseStyle.BorderForeground(lipgloss.Color("237"))
-
-	// ── Typography ──────────────────────────────────────────────────────
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	subtitleStyle = lipgloss.NewStyle().Foreground(colorTextSecondary)
-
-	// ── Status & feedback ──────────────────────────────────────────────
-	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("230")).
-			Background(colorSurfaceHigh).
-			Padding(0, 1)
-	mutedStyle    = lipgloss.NewStyle().Foreground(colorTextMuted)
-	selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorTextPrimary).
-			Background(colorSurfaceHigh)
-	currentStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).
-			Bold(true)
-
-	// ── Semantic helpers ───────────────────────────────────────────────
-	onStyle  = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
-	offStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
-
-	// ── Layout helpers ─────────────────────────────────────────────────
-	fitLineStyle = lipgloss.NewStyle() // reused by fitLine to avoid per-call allocation
-)
-
 func (m model) renderHeader() string {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if docWidth <= 0 {
@@ -1789,20 +1727,6 @@ func fallback(value, alt string) string {
 
 func truncate(value string, width int) string {
 	return ansi.Truncate(value, width, "…")
-}
-
-func getDelayStyle(ms int) lipgloss.Style {
-	if ms <= 0 {
-		return mutedStyle
-	}
-	switch {
-	case ms < 150:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	case ms < 300:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	}
 }
 
 func delayLabel(ms int) string {
