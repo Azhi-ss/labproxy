@@ -405,7 +405,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
-		case key.Matches(msg, m.keys.Search):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Search):
 			m.searchMode = true
 			m.search.Focus()
 			m.statusLine = T().TypeToFilter
@@ -421,10 +421,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Tab):
 			m.toggleFocus()
 			return m, nil
-		case key.Matches(msg, m.keys.Left):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Left):
 			m.moveFocus(-1)
 			return m, nil
-		case key.Matches(msg, m.keys.Right):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Right):
 			m.moveFocus(1)
 			return m, nil
 		case key.Matches(msg, m.keys.Up):
@@ -435,7 +435,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.delayRefreshCmd()
-		case key.Matches(msg, m.keys.TestGroup):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.TestGroup):
 			return m, m.testGroupCmd()
 		case key.Matches(msg, m.keys.Logs):
 			m.logMode = true
