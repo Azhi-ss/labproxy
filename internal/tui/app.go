@@ -1270,6 +1270,13 @@ func (m model) renderBody(availableHeight int) string {
 		return docStyle.Width(docWidth).Render("")
 	}
 
+	navWidth := 14 + panelBaseStyle.GetHorizontalFrameSize()
+	nav := renderNav(m.activeView, availableHeight)
+	rest := m.renderOldThreePane(max(0, docWidth-navWidth-1), availableHeight)
+	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
+}
+
+func (m model) renderOldThreePane(docWidth, availableHeight int) string {
 	const rowGap = 1
 
 	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()

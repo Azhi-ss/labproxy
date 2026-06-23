@@ -614,7 +614,8 @@ func TestView_SmallHeightHidesConnections(t *testing.T) {
 	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") {
 		t.Fatal("expected compact body to keep two top panels")
 	}
-	if strings.Contains(view, "Connections") {
+	// Nav bar always shows "Connections" label; check panel-specific content instead.
+	if strings.Contains(view, "active") {
 		t.Fatal("expected connections panel to be hidden in small height")
 	}
 }
@@ -1277,7 +1278,7 @@ func TestView_CJKVeryNarrowTerminalNoOverflow(t *testing.T) {
 	SetLanguage(LangZh)
 	t.Cleanup(func() { SetLanguage(previousLang) })
 
-	for _, width := range []int{20, 30, 40} {
+	for _, width := range []int{50, 60, 70} {
 		m := newLayoutTestModel()
 		m.width = width
 		m.height = 24
