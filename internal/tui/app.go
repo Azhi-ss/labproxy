@@ -389,9 +389,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.cycleModeCmd()
 		case key.Matches(msg, m.keys.SystemProxy):
 			return m, m.toggleSystemProxyCmd()
-		case key.Matches(msg, m.keys.Tab):
-			m.toggleFocus()
-			return m, nil
 		case m.activeView == viewProxies && key.Matches(msg, m.keys.Left):
 			m.moveFocus(-1)
 			return m, nil
@@ -479,10 +476,6 @@ func (m *model) applyTestGroupResult(msg testGroupResultMsg) {
 		break
 	}
 	m.statusLine = fmt.Sprintf(T().TestGroupDoneFmt, msg.groupName)
-}
-
-func (m *model) toggleFocus() {
-	m.moveFocus(1)
 }
 
 func (m *model) moveFocus(delta int) {

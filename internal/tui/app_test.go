@@ -652,7 +652,7 @@ func TestToggleFocus(t *testing.T) {
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
 	m.focus = focusGroups
 
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusOptions {
 		t.Fatalf("expected focus to be options, got %d", m.focus)
 	}
@@ -661,12 +661,12 @@ func TestToggleFocus(t *testing.T) {
 	}
 
 	// 三焦点循环：groups → options → connections → groups
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusConnections {
 		t.Fatalf("expected focus to be connections, got %d", m.focus)
 	}
 
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusGroups {
 		t.Fatalf("expected focus to cycle back to groups, got %d", m.focus)
 	}
