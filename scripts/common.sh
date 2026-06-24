@@ -1146,6 +1146,22 @@ function _error_quit() {
 
 _is_bind() {
     local port=$1
+    # macOS: lsof (may miss root-owned processes); Linux: ss / netstat
+    # Fallback: curl probe to confirm the port is actually reachable
+    if command -v lsof &>/dev/null; then
+        local lsof_out
+        lsof_out=$(lsof -iTCP:"$port" -sTCP:LISTEN -nP 2>/dev/null)
+        if [ -n "$lsof_out" ]; then
+            echo "$lsof_out"
+            return 0
+        fi
+        # lsof may miss root-owned processes; probe with curl
+        if command -v curl &>/dev/null && curl -s -o /dev/null --connect-timeout 1 "http://127.0.0.1:$port" 2>/dev/null; then
+            echo "127.0.0.1:$port (curl probe)"
+            return 0
+        fi
+        return 1
+    fi
     { ss -lnptu || netstat -lnptu; } 2>/dev/null | grep ":${port}\b"
 }
 
