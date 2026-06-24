@@ -957,15 +957,32 @@ function _get_tui_archive() {
         ;;
     esac
 
-    # 查找匹配的预编译 TUI
-    local candidate="${ZIP_BASE_DIR}/labproxy-tui-${os}-${arch}.tar.gz"
-    if [ -f "$candidate" ]; then
-        ZIP_LABPROXY_TUI="$candidate"
-        _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
+    # 从 GitHub Releases 下载预编译 TUI
+    local tui_version="${LABPROXY_TUI_VERSION:-latest}"
+    local asset_name="labproxy-tui-${os}-${arch}.tar.gz"
+    local cache_dir="${LABPROXY_HOME_DIR}/cache"
+    local dest="${cache_dir}/${asset_name}"
+
+    mkdir -p "$cache_dir"
+
+    # 如果缓存已有且版本非 latest，直接使用
+    if [ -f "$dest" ] && [ "$tui_version" != "latest" ]; then
+        ZIP_LABPROXY_TUI="$dest"
+        _okcat "使用缓存预编译 TUI：${asset_name}"
         return 0
     fi
 
-    # 没有找到预编译版本
+    local url="https://github.com/Azhi-ss/labproxy/releases/download/${tui_version}/${asset_name}"
+
+    _okcat '⏳' "正在下载预编译 TUI：${asset_name}"
+
+    if _download_file "$url" "$dest" "$asset_name" >&2; then
+        ZIP_LABPROXY_TUI="$dest"
+        _okcat "预编译 TUI 下载完成：${asset_name}"
+        return 0
+    fi
+
+    # 下载失败，回退到源码构建
     ZIP_LABPROXY_TUI=""
     _failcat "未找到预编译 TUI（${os}/${arch}），将尝试从源码构建"
     return 1
