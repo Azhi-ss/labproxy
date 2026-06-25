@@ -37,7 +37,9 @@ cleanup() {
         return 0
     fi
 
-    rm -rf "$TEST_TMPDIR"
+    # 兜底：杀掉所有命令行含 TEST_HOME 的内核进程，避免 rm 报 Directory not empty
+    pkill -f "mihomo.*${TEST_HOME}" 2>/dev/null || true
+    rm -rf "$TEST_TMPDIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 

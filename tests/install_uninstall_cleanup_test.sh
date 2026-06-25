@@ -14,7 +14,20 @@ SENTINEL_FILE="$SENTINEL_DIR/.install-uninstall-test-sentinel"
 SENTINEL_DIR_CREATED=0
 
 cleanup() {
-    rm -rf "$TEST_TMPDIR"
+    # install.sh 会 nohup 启动 mihomo 后台进程，其工作目录在 TEST_HOME 下，
+    # 不先 kill 会导致 rm -rf 报 "Directory not empty"（被进程占用）。
+    if [ -f "$TEST_HOME/.labproxy/config/labproxy.pid" ]; then
+        local pid
+        pid=$(cat "$TEST_HOME/.labproxy/config/labproxy.pid" 2>/dev/null || true)
+        if [[ ${pid:-} =~ ^[0-9]+$ ]]; then
+            kill "$pid" 2>/dev/null || true
+            sleep 0.2 2>/dev/null || true
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    fi
+    # 兜底：杀掉所有命令行含 TEST_HOME 的 mihomo 进程
+    pkill -f "mihomo.*${TEST_HOME}" 2>/dev/null || true
+    rm -rf "$TEST_TMPDIR" 2>/dev/null || true
     rm -f "$SENTINEL_FILE"
     if [ "$SENTINEL_DIR_CREATED" -eq 1 ]; then
         rmdir "$SENTINEL_DIR" 2>/dev/null || true
