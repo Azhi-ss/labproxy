@@ -154,6 +154,29 @@ _is_wsl_auto_proxy() {
     [ "$found_auto_proxy" = "true" ]
 }
 
+_is_dead_local_proxy_env() {
+    [ -n "${http_proxy:-}" ] || return 1
+
+    local proxy_target=${http_proxy#*://}
+    proxy_target=${proxy_target#*@}
+    proxy_target=${proxy_target%%/*}
+
+    local proxy_host=${proxy_target%:*}
+    local proxy_port=${proxy_target##*:}
+
+    case "$proxy_host" in
+        127.0.0.1|localhost) ;;
+        *) return 1 ;;
+    esac
+
+    case "$proxy_port" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+
+    _is_bind "$proxy_port" >/dev/null 2>&1 && return 1
+    return 0
+}
+
 # External proxy state file (for saving/restoring Windows autoProxy etc.)
 _EXTERNAL_PROXY_STATE="${LABPROXY_HOME_DIR}/config/external-proxy.state"
 
@@ -199,7 +222,7 @@ _restore_external_proxy() {
 
 watch_proxy() {
     # 新开交互式shell时
-    [[ $- == *i* ]] || return 0
+    [[ $- == *i* || ${LABPROXY_WATCH_PROXY_FORCE:-} = 1 ]] || return 0
 
     # 检查用户是否启用系统代理
     local system_proxy_status=$("$BIN_YQ" '.system-proxy.enable // true' "$LABPROXY_CONFIG_MIXIN" 2>/dev/null)
@@ -214,6 +237,9 @@ watch_proxy() {
 
     if [ -z "$http_proxy" ]; then
         # 无现有代理，直接设置 labproxy 代理
+        _set_system_proxy
+    elif _is_dead_local_proxy_env; then
+        _okcat '🔄' "检测到失效本地代理（${http_proxy}），已切换为 LabProxy 代理（端口 ${MIXED_PORT}）"
         _set_system_proxy
     elif _is_wsl_auto_proxy; then
         # WSL mirrored autoProxy 已注入 Windows 代理
@@ -240,6 +266,17 @@ function labproxyoff() {
 }
 
 function labproxyrestart() {
+    # 服务模式：优先 API 热重载，避免重启 root 进程
+    if command -v _labproxy_service_mode >/dev/null 2>&1 && _labproxy_service_mode 2>/dev/null && _labproxy_service_active 2>/dev/null; then
+        _okcat "正在热重载配置（服务模式）..."
+        # 先重建 runtime（可能配置刚改过）
+        _build_runtime_config 2>/dev/null || true
+        if _labproxy_service_reload; then
+            _okcat "代理服务热重载成功"
+            return 0
+        fi
+        _failcat "⚠️ 热重载失败，回退到重启"
+    fi
     _okcat "正在重启代理服务..."
     { labproxyoff && labproxyon; } >&/dev/null && _okcat "代理服务重启成功"
 }
@@ -484,30 +521,45 @@ function labproxytui() {
     local api_secret=$("$BIN_YQ" '.secret // ""' "$LABPROXY_CONFIG_RUNTIME" 2>/dev/null)
     local restart_command="source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 
-    # 读取语言偏好
-    local lang_flag=""
+    # 读取语言偏好（用数组传参，避免 zsh 不做单词分割导致 "--lang zh" 被当成单个 flag）
+    typeset -a lang_args
     if [ -f "$LABPROXY_LANG_FILE" ]; then
         local lang_val
         lang_val=$(head -n 1 "$LABPROXY_LANG_FILE" | tr -d '[:space:]')
         if [ "$lang_val" = "zh" ] || [ "$lang_val" = "en" ]; then
-            lang_flag="--lang $lang_val"
+            lang_args=(--lang "$lang_val")
         fi
     fi
 
     _okcat "正在连接 $endpoint ..."
     if _tui_supports_restart_command "$tui_bin"; then
-        "$tui_bin" \
-            --endpoint "$endpoint" \
-            --secret "$api_secret" \
-            --mixin-config "$LABPROXY_CONFIG_MIXIN" \
-            --restart-command "$restart_command" \
-            $lang_flag
+        if [ "${#lang_args[@]}" -gt 0 ]; then
+            "$tui_bin" \
+                --endpoint "$endpoint" \
+                --secret "$api_secret" \
+                --mixin-config "$LABPROXY_CONFIG_MIXIN" \
+                --restart-command "$restart_command" \
+                "${lang_args[@]}"
+        else
+            "$tui_bin" \
+                --endpoint "$endpoint" \
+                --secret "$api_secret" \
+                --mixin-config "$LABPROXY_CONFIG_MIXIN" \
+                --restart-command "$restart_command"
+        fi
     else
-        "$tui_bin" \
-            --endpoint "$endpoint" \
-            --secret "$api_secret" \
-            --mixin-config "$LABPROXY_CONFIG_MIXIN" \
-            $lang_flag
+        if [ "${#lang_args[@]}" -gt 0 ]; then
+            "$tui_bin" \
+                --endpoint "$endpoint" \
+                --secret "$api_secret" \
+                --mixin-config "$LABPROXY_CONFIG_MIXIN" \
+                "${lang_args[@]}"
+        else
+            "$tui_bin" \
+                --endpoint "$endpoint" \
+                --secret "$api_secret" \
+                --mixin-config "$LABPROXY_CONFIG_MIXIN"
+        fi
     fi
 }
 
@@ -579,6 +631,14 @@ _restart_runtime() {
 
 _apply_runtime_change() {
     _build_runtime_config
+    # 服务模式：通过 mihomo API 热重载，无需重启进程、无需 sudo
+    if command -v _labproxy_service_mode >/dev/null 2>&1 && _labproxy_service_mode 2>/dev/null && _labproxy_service_active 2>/dev/null; then
+        if _labproxy_service_reload; then
+            _okcat '✅' "配置已通过 API 热重载（服务模式）"
+            return 0
+        fi
+        _failcat "⚠️ 热重载失败，回退到重启"
+    fi
     _restart_runtime
 }
 
@@ -996,7 +1056,11 @@ function labproxysubupdate() {
     if [ -z "$name" ]; then
         name="$(_active_subscription_name)"
         [ -z "$name" ] && { _failcat "无活跃订阅，使用 'labproxy add <名称> <URL>' 添加"; return 1; }
-        url="$(_active_subscription_url)"
+    fi
+
+    # url 未显式传入时，按 name 从订阅表查询
+    if [ -z "$url" ]; then
+        url="$("$BIN_YQ" ".subscriptions[\"$name\"].url // \"\"" "$LABPROXY_SUBS_FILE" 2>/dev/null)"
     fi
 
     [ -z "$url" ] && { _failcat "订阅 '${name}' 的 URL 为空"; return 1; }
@@ -1480,6 +1544,10 @@ function labproxyctl() {
     lang)
         shift
         labproxylang "$@"
+        ;;
+    service)
+        shift
+        labproxyservice "$@"
         ;;
     doctor)
         shift

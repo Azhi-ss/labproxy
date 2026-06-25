@@ -68,7 +68,9 @@ assert_file_not_contains() {
     fi
 }
 
-if ! HOME="$TEST_HOME" bash "$ROOT_DIR/install.sh" > "$LOG_FILE" 2>&1; then
+# LABPROXY_LANG=zh 预设语言，避免非交互调用时 read 在 EOF 退出
+# LABPROXY_FORCE_USER_MODE=1 隔离全局特权服务 plist，确保走用户空间安装流程
+if ! HOME="$TEST_HOME" LABPROXY_LANG=zh LABPROXY_FORCE_USER_MODE=1 bash "$ROOT_DIR/install.sh" > "$LOG_FILE" 2>&1; then
     cat "$LOG_FILE" >&2
     exit 1
 fi

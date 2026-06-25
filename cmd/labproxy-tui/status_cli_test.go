@@ -184,6 +184,107 @@ func contains(s, sub string) bool {
 	return false
 }
 
+// writeRuntimeYaml 在 home/.labproxy/runtime.yaml 写入端口配置。
+func writeRuntimeYaml(t *testing.T, home string, body string) {
+	t.Helper()
+	dir := filepath.Join(home, ".labproxy")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir .labproxy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "runtime.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write runtime.yaml: %v", err)
+	}
+}
+
+// TestReadPortsFromRuntime 验证 ports.conf 缺失时从 runtime.yaml 回退解析端口。
+func TestReadPortsFromRuntime(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want map[string]int
+	}{
+		{
+			name: "full config",
+			yaml: "mixed-port: 7893\nexternal-controller: 0.0.0.0:9090\ndns:\n  listen: 0.0.0.0:15353\n",
+			want: map[string]int{"PROXY_PORT": 7893, "UI_PORT": 9090, "DNS_PORT": 15353},
+		},
+		{
+			name: "only mixed-port",
+			yaml: "mixed-port: 7890\n",
+			want: map[string]int{"PROXY_PORT": 7890},
+		},
+		{
+			name: "empty file",
+			yaml: "",
+			want: map[string]int{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeRuntimeYaml(t, home, tc.yaml)
+			got := readPortsFromRuntime(home)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len mismatch: got %d want %d (%v)", len(got), len(tc.want), got)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("port %s: got %d want %d", k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+// TestReadPortsFromRuntime_MissingFile 文件不存在时返回空 map（不 panic）。
+func TestReadPortsFromRuntime_MissingFile(t *testing.T) {
+	got := readPortsFromRuntime(t.TempDir())
+	if len(got) != 0 {
+		t.Fatalf("expected empty map, got %v", got)
+	}
+}
+
+// TestReadPIDFile_FromPIDFile PID 文件存在且有效时直接返回该 PID。
+func TestReadPIDFile_FromPIDFile(t *testing.T) {
+	home := t.TempDir()
+	cfgDir := filepath.Join(home, ".labproxy", "config")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	want := 42424
+	if err := os.WriteFile(filepath.Join(cfgDir, "labproxy.pid"), []byte("42424\n"), 0o644); err != nil {
+		t.Fatalf("write pid: %v", err)
+	}
+	if got := readPIDFile(home); got != want {
+		t.Errorf("readPIDFile: got %d want %d", got, want)
+	}
+}
+
+// TestReadPIDFile_FallbackScan PID 文件缺失时回退 ps 扫描；
+// 使用独特临时目录，系统真实 mihomo 不会匹配，应返回 0。
+func TestReadPIDFile_FallbackScan(t *testing.T) {
+	home := t.TempDir()
+	// 不写 pid 文件；scanMihomoPID 找不到匹配 -d <home> 的进程 → 0
+	if got := readPIDFile(home); got != 0 {
+		t.Errorf("readPIDFile fallback should be 0 for unmatched home, got %d", got)
+	}
+}
+
+// TestProcessAlive_CurrentProcess 当前测试进程必然存活。
+func TestProcessAlive_CurrentProcess(t *testing.T) {
+	if !processAlive(os.Getpid()) {
+		t.Fatal("current process should be alive")
+	}
+}
+
+// TestProcessAlive_DeadPID 不存在的 PID 应判定为不存活。
+func TestProcessAlive_DeadPID(t *testing.T) {
+	// 999999 极大概率不存在；即使被回收复用，ps -p 也会因非 labproxy 判定失败
+	if processAlive(999999) {
+		t.Fatal("pid 999999 should not be alive")
+	}
+}
+
 func init() {
 	// 触发 runtime 引用避免未使用（跨平台 ps 解析路径）
 	_ = runtime.GOOS

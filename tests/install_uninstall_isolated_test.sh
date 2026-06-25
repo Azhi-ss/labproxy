@@ -422,6 +422,8 @@ run_install() {
         USER='labproxy-test' \
         TMPDIR="$TEST_TMP" \
         FAKE_CRONTAB_FILE="$CRONTAB_FILE" \
+        LABPROXY_LANG=zh \
+        LABPROXY_FORCE_USER_MODE=1 \
         PATH="$TEST_BIN:$ORIGINAL_PATH" \
         "$REAL_BASH" ./install.sh
     ) > "$INSTALL_LOG" 2>&1

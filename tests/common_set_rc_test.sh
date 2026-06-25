@@ -161,9 +161,11 @@ test_set_rc_unset_removes_fish_managed_block() {
 test_set_rc_fish_no_bash_source_line() {
     _set_rc
 
-    # Fish rc should NOT contain bash-style source commands
+    # Fish rc should NOT contain bash-style source commands.
+    # fish 用自己的 _labproxy_watch_proxy 函数（合法 fish 语法），故只拦截
+    # bash 风格的 "&& watch_proxy" 整行特征，而非裸 "watch_proxy" 字样。
     assert_file_not_contains "$SHELL_RC_FISH" "source $LABPROXY_SCRIPT_DIR/common.sh"
-    assert_file_not_contains "$SHELL_RC_FISH" "watch_proxy"
+    assert_file_not_contains "$SHELL_RC_FISH" "&& watch_proxy"
 }
 
 test_set_rc_bash_no_fish_set_line() {

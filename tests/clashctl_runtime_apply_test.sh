@@ -32,7 +32,10 @@ set_key() {
     touch "$file"
 
     if grep -q "^${key}:" "$file"; then
-        sed -i "s#^${key}:.*#${key}: ${value}#" "$file"
+        local tmp
+        tmp="${file}.tmp.$$"
+        sed "s#^${key}:.*#${key}: ${value}#" "$file" > "$tmp"
+        mv "$tmp" "$file"
     else
         printf '%s: %s\n' "$key" "$value" >> "$file"
     fi
@@ -368,13 +371,13 @@ test_labproxysubscribe_saves_url_without_immediate_update() {
     assert_file_not_contains "$ACTION_LOG" "labproxyupdate:http://example.com/subscription"
 }
 
-test_labproxyupdate_persists_url_logs_success_and_restarts() {
-    labproxyupdate "http://example.com/updated"
+test_labproxysubupdate_persists_url_logs_success_and_restarts() {
+    labproxysubupdate "default" "http://example.com/updated"
 
     assert_file_contains "$ACTION_LOG" "download_config:http://example.com/updated"
     assert_file_contains "$LABPROXY_CONFIG_URL" "http://example.com/updated"
-    assert_file_contains "$LABPROXY_UPDATE_LOG" "订阅更新成功：http://example.com/updated"
-    assert_equals 1 "$(restart_count)" "restart count after labproxyupdate"
+    assert_file_contains "$LABPROXY_UPDATE_LOG" "订阅更新成功：default"
+    assert_equals 1 "$(restart_count)" "restart count after labproxysubupdate"
 }
 
 test_labproxytui_builds_and_launches_first_party_binary() {
@@ -391,6 +394,28 @@ test_labproxytui_builds_and_launches_first_party_binary() {
     assert_file_contains "$ACTION_LOG" "--restart-command source \"$LABPROXY_SCRIPT_DIR/common.sh\" && source \"$LABPROXY_SCRIPT_DIR/proxyctl.sh\" && labproxyrestart"
 }
 
+test_watch_proxy_overrides_dead_local_proxy_env() {
+    cat > "$LABPROXY_PORT_STATE" <<'EOF'
+PROXY_PORT=7893
+UI_PORT=9090
+DNS_PORT=15353
+EOF
+    echo 'system-proxy.enable: true' > "$LABPROXY_CONFIG_MIXIN"
+    export LABPROXY_WATCH_PROXY_FORCE=1
+    export http_proxy=http://127.0.0.1:51569
+    export HTTP_PROXY=http://127.0.0.1:51569
+
+    _is_bind() {
+        [ "$1" = "51569" ] && return 1
+        return 0
+    }
+
+    watch_proxy
+
+    assert_file_contains "$ACTION_LOG" "set_system_proxy"
+    unset LABPROXY_WATCH_PROXY_FORCE http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY
+}
+
 run_test "_merge_config_restart rebuilds runtime and restarts" test_merge_config_restart_rebuilds_and_restarts
 run_test "_merge_config_restart rolls back and skips restart on validation failure" test_merge_config_restart_rolls_back_and_skips_restart_on_validation_failure
 run_test "labproxysecret updates mixin and restarts" test_labproxysecret_updates_mixin_and_restarts
@@ -399,5 +424,6 @@ run_test "lan commands update mixin and restart" test_lan_commands_update_mixin_
 run_test "labproxyon builds runtime and finalizes startup" test_labproxyon_builds_runtime_and_finalizes_startup
 run_test "labproxyon stops after start failure" test_labproxyon_stops_after_start_failure
 run_test "labproxysubscribe saves url without immediate update" test_labproxysubscribe_saves_url_without_immediate_update
-run_test "labproxyupdate persists url logs success and restarts" test_labproxyupdate_persists_url_logs_success_and_restarts
+run_test "labproxysubupdate persists url logs success and restarts" test_labproxysubupdate_persists_url_logs_success_and_restarts
 run_test "labproxytui builds and launches first-party binary" test_labproxytui_builds_and_launches_first_party_binary
+run_test "watch_proxy overrides dead local proxy env" test_watch_proxy_overrides_dead_local_proxy_env

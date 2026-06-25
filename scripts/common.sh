@@ -1129,7 +1129,15 @@ function _error_quit() {
 
 _is_bind() {
     local port=$1
-    { ss -lnptu || netstat -lnptu; } 2>/dev/null | grep ":${port}\b"
+    # 跨平台端口监听检测：
+    #   - macOS/BSD: 优先 lsof（ss 不存在，netstat -lnptu 是 Linux 写法会误判）
+    #   - Linux: 回退 ss / netstat
+    #   - 输出格式兼容 ":PORT"（Linux）与 "*.PORT"（macOS/BSD），用 [:.] 匹配分隔符
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null
+    else
+        { ss -lntup 2>/dev/null || netstat -tunlp 2>/dev/null; } | grep -E "[:.]${port}\b"
+    fi
 }
 
 _is_already_in_use() {
@@ -1627,6 +1635,32 @@ _is_labproxy_pid() {
     return 0
 }
 
+# 扫描已运行的内核进程，返回匹配当前 home/runtime 的 PID（无则返回 1）。
+# 用于 PID 文件丢失但内核实际在运行的 reconcile 场景，避免重复启动。
+_find_existing_kernel_pid() {
+    local candidates=""
+    if command -v pgrep >/dev/null 2>&1; then
+        candidates=$(pgrep -f "$BIN_KERNEL_NAME" 2>/dev/null || true)
+    fi
+    # 回退：ps 全量扫描（pgrep 不可用或无匹配时）
+    if [ -z "$candidates" ] && command -v ps >/dev/null 2>&1; then
+        candidates=$(ps -axo pid=,args= 2>/dev/null \
+            | grep -F "$BIN_KERNEL_NAME" \
+            | grep -F " -d $LABPROXY_HOME_DIR" \
+            | awk '{print $1}')
+    fi
+
+    local pid
+    for pid in $candidates; do
+        # _is_labproxy_pid 不依赖 kill -0，可识别 SIP/reparent 下信号受限的进程
+        if _is_labproxy_pid "$pid"; then
+            echo "$pid"
+            return 0
+        fi
+    done
+    return 1
+}
+
 start_labproxy() {
     local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
     local log_file="$LABPROXY_HOME_DIR/logs/labproxy.log"
@@ -1638,6 +1672,22 @@ start_labproxy() {
     if is_labproxy_running; then
         _okcat "LabProxy 进程已在运行"
         return 0
+    fi
+
+    # PID 文件缺失或失效时，扫描已运行的内核进程并 reconcile（避免重复启动）：
+    # 父 shell 退出后 mihomo 被 reparent 到 PID 1，PID 文件可能已被 stop 清理。
+    local existing_pid
+    existing_pid=$(_find_existing_kernel_pid 2>/dev/null) || existing_pid=""
+    if [ -n "$existing_pid" ]; then
+        echo "$existing_pid" > "$pid_file"
+        _okcat "LabProxy 内核已在运行（PID: ${existing_pid}），已同步 PID 文件"
+        return 0
+    fi
+
+    # 服务模式：特权服务已安装但未运行时，提示用 launchctl 启动（需 sudo）
+    if command -v _labproxy_service_mode >/dev/null 2>&1 && _labproxy_service_mode 2>/dev/null; then
+        _failcat "特权服务已安装但未运行，请执行：sudo launchctl bootstrap system ${_LABPROXY_SERVICE_PLIST}"
+        return 1
     fi
 
     # Validate configuration before starting
@@ -1667,6 +1717,20 @@ start_labproxy() {
 
 stop_labproxy() {
     local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
+
+    # 服务模式：通过 launchctl 停止特权服务（需 sudo）
+    if command -v _labproxy_service_mode >/dev/null 2>&1 && _labproxy_service_mode 2>/dev/null; then
+        if _labproxy_service_active 2>/dev/null; then
+            _okcat '⏳' "停止特权服务（需要 sudo 密码）..."
+            sudo launchctl bootout "system/${_LABPROXY_SERVICE_LABEL}" 2>/dev/null \
+                && _okcat '✅' "特权服务已停止" \
+                || { _failcat "停止失败：sudo launchctl bootout system/${_LABPROXY_SERVICE_LABEL}"; return 1; }
+        else
+            _okcat "LabProxy 进程未运行"
+        fi
+        rm -f "$pid_file" "$LABPROXY_PORT_STATE"
+        return 0
+    fi
 
     if [ ! -f "$pid_file" ]; then
         _okcat "LabProxy 进程未运行"
@@ -1713,6 +1777,11 @@ stop_labproxy() {
 }
 
 is_labproxy_running() {
+    # 服务模式优先：特权服务已加载且进程存活则视为运行中
+    if command -v _labproxy_service_active >/dev/null 2>&1 && _labproxy_service_active 2>/dev/null; then
+        return 0
+    fi
+
     local pid_file="$LABPROXY_HOME_DIR/config/labproxy.pid"
 
     [ ! -f "$pid_file" ] && return 1
@@ -1856,3 +1925,14 @@ _resolve_port_conflicts() {
 
     return 0
 }
+
+# 加载特权服务管理模块（方案 A：macOS TUN 需 root）
+# service.sh 依赖本文件定义的 LABPROXY_HOME_DIR / BIN_KERNEL_NAME / BIN_YQ 等变量，
+# 在此 source 确保变量已就绪；函数体内的变量在调用时才求值，定义顺序无影响。
+if [ -f "${SCRIPT_BASE_DIR:-}/service.sh" ]; then
+    # shellcheck disable=SC1091
+    . "${SCRIPT_BASE_DIR}/service.sh"
+elif [ -f "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")/service.sh" ]; then
+    # shellcheck disable=SC1091
+    . "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")/service.sh"
+fi

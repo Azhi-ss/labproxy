@@ -52,6 +52,18 @@ for yq_file in "${LABPROXY_HOME_DIR}/bin"/yq_*; do
 done
 chmod +x "${LABPROXY_HOME_DIR}/bin/yq"
 
+# 校验 yq 是否能在本机执行（仓库仅含 linux_amd64 包，macOS/其他架构需回退）
+if ! "${LABPROXY_HOME_DIR}/bin/yq" --version >/dev/null 2>&1; then
+    _failcat "⚠️" "内置 yq 无法在本机运行（架构不匹配），尝试回退到系统 yq"
+    if command -v yq >/dev/null 2>&1 && yq --version >/dev/null 2>&1; then
+        cp -f "$(command -v yq)" "${LABPROXY_HOME_DIR}/bin/yq"
+        chmod +x "${LABPROXY_HOME_DIR}/bin/yq"
+        _okcat '✅' "已使用系统 yq：$(command -v yq)"
+    else
+        _error_quit "无可用的 yq（内置包架构不匹配且系统未安装 yq），无法编辑 YAML 配置"
+    fi
+fi
+
 # 设置二进制文件路径
 _set_bin
 
@@ -82,9 +94,16 @@ echo "请选择界面语言 / Please select your language:"
 echo "  1) 中文"
 echo "  2) English"
 lang_choice=""
+# 支持环境变量预设语言，便于非交互安装
+case "${LABPROXY_LANG:-}" in
+    zh|en) lang_choice="$LABPROXY_LANG" ;;
+esac
 while [ -z "$lang_choice" ]; do
     echo -n "$(_okcat '🌐' '输入选项 (1/2):')"
-    read -r choice
+    if ! read -r choice; then
+        # read 在 EOF（无 stdin / 管道输入耗尽）时返回非 0，避免死循环
+        _error_quit "未提供语言选项（stdin 已结束）。请交互运行，或用 LABPROXY_LANG=zh|en bash install.sh 预设"
+    fi
     case "$choice" in
         1|zh|中文)
             lang_choice="zh"
