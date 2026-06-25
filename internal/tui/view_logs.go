@@ -82,6 +82,7 @@ func nextLogLevel(current string) string {
 // renderLogsView 渲染 Logs 视图：全屏日志列表 + 级别指示。
 // 复用原 renderLogOverlay 的着色与截断逻辑。
 func (m model) renderLogsView(width, height int) string {
+	t := m.theme
 	w := max(1, width)
 	h := max(1, height)
 
@@ -104,7 +105,7 @@ func (m model) renderLogsView(width, height int) string {
 		lines = append(lines, fitLine(fmt.Sprintf("[%s] %s", e.Level, e.Payload), w))
 	}
 	if len(lines) == 0 {
-		lines = append(lines, fitLine(mutedStyle.Render(T().LogWaiting), w))
+		lines = append(lines, fitLine(mutedStyle(t).Render(T().LogWaiting), w))
 	}
 
 	content := strings.Join(lines, "\n")

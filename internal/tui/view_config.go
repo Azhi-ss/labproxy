@@ -38,12 +38,13 @@ func (m model) renderConfigView(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
+	t := m.theme
 
-	panelStyle := panelBaseStyle.Width(width).Height(height)
+	panelStyle := panelBaseStyle(t).Width(width).Height(height)
 	innerWidth := max(0, width-panelStyle.GetHorizontalFrameSize()-4)
 
-	title := titleStyle.Render(T().SettingsTitle)
-	subtitle := mutedStyle.Render(T().SettingsHint)
+	title := titleStyle(t).Render(T().SettingsTitle)
+	subtitle := mutedStyle(t).Render(T().SettingsHint)
 
 	rows := m.visibleSettingRows(innerWidth, 5)
 	content := lipgloss.JoinVertical(
@@ -65,9 +66,9 @@ func (m model) settingsItems() []settingItem {
 	}
 	return []settingItem{
 		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), RawValue: false, Hint: T().HintCycle, Action: settingCycleMode},
-		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), RawValue: m.systemProxyEnabled, Hint: T().HintNewShells, Action: settingToggleSystemProxy},
-		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), RawValue: m.allowLanEnabled, Hint: T().HintRestart, Action: settingToggleAllowLan},
-		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), RawValue: m.tunEnabled, Hint: T().HintRestart, Action: settingToggleTun},
+		{Label: T().SettingLabelSysProxy, Value: boolLabelPlain(m.systemProxyEnabled), RawValue: m.systemProxyEnabled, Hint: T().HintNewShells, Action: settingToggleSystemProxy},
+		{Label: T().SettingLabelAllowLan, Value: boolLabelPlain(m.allowLanEnabled), RawValue: m.allowLanEnabled, Hint: T().HintRestart, Action: settingToggleAllowLan},
+		{Label: T().SettingLabelTun, Value: boolLabelPlain(m.tunEnabled), RawValue: m.tunEnabled, Hint: T().HintRestart, Action: settingToggleTun},
 		{Label: T().SettingLabelRestart, Value: "", RawValue: false, Hint: restartHint, Action: settingRestart},
 	}
 }
@@ -76,9 +77,10 @@ func (m model) visibleSettingRows(width, limit int) []string {
 	if limit <= 0 || width <= 0 {
 		return nil
 	}
+	t := m.theme
 	items := m.settingsItems()
 	if len(items) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoSettingsAvailable), width)}
+		return []string{fitLine(mutedStyle(t).Render("  "+T().NoSettingsAvailable), width)}
 	}
 	start, end := window(m.settingsIndex, len(items), limit)
 	rows := make([]string, 0, end-start)
@@ -92,7 +94,7 @@ func (m model) visibleSettingRows(width, limit int) []string {
 
 		baseStyle := lipgloss.NewStyle()
 		if isSelected {
-			baseStyle = selectedStyle
+			baseStyle = selectedStyle(t)
 		}
 
 		var valueStyle lipgloss.Style
@@ -100,25 +102,25 @@ func (m model) visibleSettingRows(width, limit int) []string {
 		switch item.Action {
 		case settingCycleMode:
 			valueStrPlain = strings.ToLower(strings.TrimSpace(item.Value))
-			valueStyle = getModeStyle(valueStrPlain)
+			valueStyle = getModeStyle(t, valueStrPlain)
 		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
 			isOn := item.RawValue
 			valueStrPlain = T().BoolOff
-			valueStyle = offStyle
+			valueStyle = offStyle(t)
 			if isOn {
 				valueStrPlain = T().BoolOn
-				valueStyle = onStyle
+				valueStyle = onStyle(t)
 			}
 		case settingRestart:
 			valueStrPlain = T().ValueRestart
-			valueStyle = lipgloss.NewStyle().Foreground(colorInfo).Bold(true)
+			valueStyle = lipgloss.NewStyle().Foreground(t.Info).Bold(true)
 		default:
 			valueStrPlain = item.Value
-			valueStyle = mutedStyle
+			valueStyle = mutedStyle(t)
 		}
 
 		if isSelected {
-			valueStyle = valueStyle.Inherit(selectedStyle).Foreground(valueStyle.GetForeground())
+			valueStyle = valueStyle.Inherit(selectedStyle(t)).Foreground(valueStyle.GetForeground())
 		}
 
 		hintPart := ""
@@ -139,9 +141,9 @@ func (m model) visibleSettingRows(width, limit int) []string {
 			valueStyle.Render(valueStrPlain)
 
 		if hintPart != "" {
-			hintStyle := mutedStyle
+			hintStyle := mutedStyle(t)
 			if isSelected {
-				hintStyle = hintStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
+				hintStyle = hintStyle.Inherit(selectedStyle(t)).Foreground(t.TextMuted)
 			}
 			line += hintStyle.Render(hintPart)
 		}
@@ -216,7 +218,7 @@ func (m model) toggleSystemProxyCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return configFlagsMsg{
-			status:             fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
+			status:             fmt.Sprintf(T().SysProxyPrefFmt, boolLabelPlain(next)),
 			systemProxyEnabled: sysEnabled,
 			allowLanEnabled:    m.allowLanEnabled,
 			tunEnabled:         m.tunEnabled,
@@ -235,7 +237,7 @@ func (m model) toggleAllowLanCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return configFlagsMsg{
-			status:             fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
+			status:             fmt.Sprintf(T().AllowLanPrefFmt, boolLabelPlain(next)),
 			systemProxyEnabled: m.systemProxyEnabled,
 			allowLanEnabled:    lanEnabled,
 			tunEnabled:         m.tunEnabled,
@@ -254,7 +256,7 @@ func (m model) toggleTunCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return configFlagsMsg{
-			status:             fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
+			status:             fmt.Sprintf(T().TunPrefFmt, boolLabelPlain(next)),
 			systemProxyEnabled: m.systemProxyEnabled,
 			allowLanEnabled:    m.allowLanEnabled,
 			tunEnabled:         tunEnabled,
@@ -346,17 +348,4 @@ func (m model) refreshSettingsOnly() (refreshMsg, error) {
 		return refreshMsg{}, err
 	}
 	return state, nil
-}
-
-func getModeStyle(mode string) lipgloss.Style {
-	switch mode {
-	case "rule":
-		return lipgloss.NewStyle().Foreground(colorSuccess)
-	case "global":
-		return lipgloss.NewStyle().Foreground(colorWarning)
-	case "direct":
-		return lipgloss.NewStyle().Foreground(colorInfo)
-	default:
-		return mutedStyle
-	}
 }

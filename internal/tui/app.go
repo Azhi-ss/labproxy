@@ -8,6 +8,7 @@ import (
 
 	appconfig "labproxy/internal/config"
 	"labproxy/internal/proxy"
+	"labproxy/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -22,6 +23,7 @@ type RulesModal interface {
 	Close()
 	Update(tea.KeyMsg) bool
 	View() string
+	SetTheme(t *theme.Theme)
 }
 
 type Options struct {
@@ -122,6 +124,8 @@ type model struct {
 	allowLanEnabled    bool
 	tunEnabled         bool
 
+	theme *theme.Theme
+
 	version string
 	mode    string
 	up      int64
@@ -167,12 +171,18 @@ func newModel(client *proxy.Client, opts Options) model {
 	search.CharLimit = 64
 	search.Width = 28
 
+	t := theme.Current()
+	if opts.RulesModal != nil {
+		opts.RulesModal.SetTheme(t)
+	}
+
 	return model{
 		client:             client,
 		endpoint:           opts.Endpoint,
 		mixinConfigPath:    opts.MixinConfigPath,
 		restartCommand:     opts.RestartCommand,
 		systemProxyEnabled: opts.SystemProxyEnabled,
+		theme:              t,
 		focus:              focusGroups,
 		activeView:         viewProxies,
 		width:              120,
@@ -679,8 +689,8 @@ func (m model) renderBody(availableHeight int) string {
 		return docStyle.Width(docWidth).Render("")
 	}
 
-	navWidth := 14 + panelBaseStyle.GetHorizontalFrameSize()
-	nav := renderNav(m.activeView, availableHeight)
+	navWidth := 14 + panelBaseStyle(m.theme).GetHorizontalFrameSize()
+	nav := renderNav(m.theme, m.activeView, availableHeight)
 	contentWidth := max(0, docWidth-navWidth-1)
 
 	var rest string

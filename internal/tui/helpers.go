@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"labproxy/internal/proxy"
+	"labproxy/internal/tui/theme"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -14,7 +15,7 @@ func fitLine(line string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return fitLineStyle.MaxWidth(width).Render(line)
+	return lipgloss.NewStyle().MaxWidth(width).Render(line)
 }
 
 func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
@@ -28,15 +29,22 @@ func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
 	return line
 }
 
-func renderPanelContent(title, subtitle string, rows []string, width, height int) string {
+func renderPanelContent(t *theme.Theme, title, subtitle string, rows []string, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
 
 	lines := make([]string, 0, height)
-	lines = append(lines, fitLine(titleStyle.Render(ansi.Truncate(title, width, "…")), width))
-	if height >= 2 && strings.TrimSpace(subtitle) != "" {
-		lines = append(lines, fitLine(subtitleStyle.Render(ansi.Truncate(subtitle, width, "…")), width))
+	lines = append(lines, fitLine(titleStyle(t).Render(ansi.Truncate(title, width, "…")), width))
+
+	if height >= 3 && strings.TrimSpace(subtitle) != "" {
+		lines = append(lines, "")
+		lines = append(lines, fitLine(subtitleStyle(t).Render(ansi.Truncate(subtitle, width, "…")), width))
+	}
+
+	// 标题/副标题与行之间留空行
+	if len(lines) > 0 && len(rows) > 0 && height > len(lines) {
+		lines = append(lines, "")
 	}
 
 	remaining := height - len(lines)
@@ -57,10 +65,11 @@ func renderPanel(style lipgloss.Style, width, height int, content string) string
 	if height < 0 {
 		height = 0
 	}
+	frameW := style.GetHorizontalFrameSize()
 	return style.
-		Width(width).
+		Width(width + frameW).
 		Height(height).
-		MaxWidth(width).
+		MaxWidth(width + frameW).
 		MaxHeight(height).
 		Render(content)
 }
@@ -86,11 +95,11 @@ func truncate(value string, width int) string {
 	return ansi.Truncate(value, width, "…")
 }
 
-func delayLabel(ms int) string {
+func delayLabel(t *theme.Theme, ms int) string {
 	if ms <= 0 {
-		return mutedStyle.Render("--")
+		return mutedStyle(t).Render("--")
 	}
-	return getDelayStyle(ms).Render(fmt.Sprintf("%dms", ms))
+	return getDelayStyle(t, ms).Render(fmt.Sprintf("%dms", ms))
 }
 
 func window(selected, total, limit int) (int, int) {
@@ -116,19 +125,34 @@ func max(a, b int) int {
 	return b
 }
 
-func boolLabel(value bool) string {
+func boolLabel(t *theme.Theme, value bool) string {
 	if value {
-		return onStyle.Render(T().BoolOn)
+		return onStyle(t).Render(T().BoolOn)
 	}
-	return offStyle.Render(T().BoolOff)
+	return offStyle(t).Render(T().BoolOff)
 }
 
-func modeLabel(mode string) string {
+func boolLabelPlain(value bool) string {
+	if value {
+		return T().BoolOn
+	}
+	return T().BoolOff
+}
+
+func modeLabel(t *theme.Theme, mode string) string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode != "rule" && mode != "global" && mode != "direct" {
 		mode = fallback(mode, "unknown")
 	}
-	return getModeStyle(mode).Render(mode)
+	return getModeStyle(t, mode).Render(mode)
+}
+
+func modeLabelPlain(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "rule" && mode != "global" && mode != "direct" {
+		mode = fallback(mode, "unknown")
+	}
+	return mode
 }
 
 func nextMode(current string) string {

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"labproxy/internal/tui/theme"
 	"testing"
 	"time"
 
@@ -844,15 +846,15 @@ func TestDelayLabel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := delayLabel(tt.input)
+		result := delayLabel(theme.Light, tt.input)
 		// Check that it contains delay (color codes may be present)
 		if tt.input > 0 {
 			if !strings.Contains(result, "ms") {
-				t.Fatalf("delayLabel(%d): expected 'ms' in result, got %q", tt.input, result)
+				t.Fatalf("delayLabel(theme.Light, %d): expected 'ms' in result, got %q", tt.input, result)
 			}
 		} else {
 			if result != "--" {
-				t.Fatalf("delayLabel(%d): expected '--', got %q", tt.input, result)
+				t.Fatalf("delayLabel(theme.Light, %d): expected '--', got %q", tt.input, result)
 			}
 		}
 	}
@@ -904,11 +906,11 @@ func TestMax(t *testing.T) {
 }
 
 func TestBoolLabel(t *testing.T) {
-	if boolLabel(true) != "on" {
-		t.Fatalf("boolLabel(true): expected 'on', got %q", boolLabel(true))
+	if boolLabel(theme.Light, true) != "on" {
+		t.Fatalf("boolLabel(theme.Light, true): expected 'on', got %q", boolLabel(theme.Light, true))
 	}
-	if boolLabel(false) != "off" {
-		t.Fatalf("boolLabel(false): expected 'off', got %q", boolLabel(false))
+	if boolLabel(theme.Light, false) != "off" {
+		t.Fatalf("boolLabel(theme.Light, false): expected 'off', got %q", boolLabel(theme.Light, false))
 	}
 }
 
@@ -1342,12 +1344,13 @@ func TestVisibleConnectionRows_CJKChainNamesNoOverflow(t *testing.T) {
 
 	// Very narrow connection panel: only ~18 cols of effective content
 	const width = 22
-	rows := m.visibleConnectionRows(width, 2)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	rows := m.visibleConnectionRows(width, 3)
+	// header row + 1 data row
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows (header + data), got %d", len(rows))
 	}
-	if got := ansi.StringWidth(rows[0]); got > width {
-		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
+	if got := ansi.StringWidth(rows[1]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[1])
 	}
 }
 
@@ -1366,12 +1369,13 @@ func TestVisibleConnectionRows_CJKHostNameNoOverflow(t *testing.T) {
 
 	// Connection row falls back to ID when host/destination empty
 	const width = 30
-	rows := m.visibleConnectionRows(width, 1)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	rows := m.visibleConnectionRows(width, 2)
+	// header row + 1 data row
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows (header + data), got %d", len(rows))
 	}
-	if got := ansi.StringWidth(rows[0]); got > width {
-		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
+	if got := ansi.StringWidth(rows[1]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[1])
 	}
 }
 
@@ -1383,7 +1387,7 @@ func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
 
 	// Compute columnContentWidth (same as rebuildGroups does)
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - 2 - panelFrameWidth*2
 
 	// Short names
@@ -1419,7 +1423,7 @@ func TestGroupPanelWidthRespectsMax(t *testing.T) {
 	}
 
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - 2 - panelFrameWidth*2
 	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
 

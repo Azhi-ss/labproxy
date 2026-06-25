@@ -1,49 +1,45 @@
 package tui
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m model) renderHeader() string {
+	t := m.theme
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if docWidth <= 0 {
 		return ""
 	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	titleRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		titleStyle.Render(T().AppTitle),
-		"  ",
-		subtitleStyle.Render(T().PressSForSettings),
-	)
+	innerWidth := max(0, docWidth-headerStyle(t).GetHorizontalFrameSize())
 
-	metaRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		statusPill(T().PillEndpoint, fallback(m.endpoint, "-")),
-		statusPill(T().PillMode, modeLabel(m.mode)),
-		statusPill(T().PillProxy, boolLabel(m.systemProxyEnabled)),
-		statusPill(T().PillLan, boolLabel(m.allowLanEnabled)),
-		statusPill(T().PillTun, boolLabel(m.tunEnabled)),
-		statusPill("↑", formatBytes(m.up)),
-		statusPill("↓", formatBytes(m.down)),
-		statusPill(T().PillFocus, m.focusLabel()),
-	)
+	// 左：应用标题
+	left := titleStyle(t).Render(T().AppTitle)
 
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		fitLine(titleRow, innerWidth),
-		"",
-		fitLine(metaRow, innerWidth),
-	)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(content))
-}
+	// 右：紧凑状态行
+	parts := []string{
+		mutedStyle(t).Render(T().PillEndpoint) + fallback(m.endpoint, "-"),
+		mutedStyle(t).Render(T().PillMode) + modeLabel(t, m.mode),
+		mutedStyle(t).Render(T().PillProxy) + boolLabel(t, m.systemProxyEnabled),
+		mutedStyle(t).Render(T().PillLan) + boolLabel(t, m.allowLanEnabled),
+		mutedStyle(t).Render(T().PillTun) + boolLabel(t, m.tunEnabled),
+		mutedStyle(t).Render("↑") + formatBytes(m.up),
+		mutedStyle(t).Render("↓") + formatBytes(m.down),
+	}
+	right := lipgloss.JoinHorizontal(lipgloss.Left, parts...)
 
-func statusPill(label, value string) string {
-	pill := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("237")).
-		Padding(0, 1)
-	return pill.Render(fmt.Sprintf("%s %s", mutedStyle.Render(label), value))
+	// 左右之间填充空格
+	gap := innerWidth - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap < 1 {
+		gap = 1
+	}
+	row := left + strings.Repeat(" ", gap) + right
+
+	return docStyle.Width(docWidth).Render(
+		headerStyle(t).Width(innerWidth).MaxWidth(docWidth).Render(
+			fitLine(row, innerWidth),
+		),
+	)
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"labproxy/internal/tui/theme"
 )
 
 // viewID 标识五个常驻视图，对应 Clash dashboard 的核心页。
@@ -74,20 +76,19 @@ func viewByDigit(digit string) (viewID, bool) {
 }
 
 // renderNav 渲染左侧窄导航栏：每项显示 [digit] label，当前项加 ▌ 前缀与高亮。
-func renderNav(active viewID, height int) string {
+func renderNav(t *theme.Theme, active viewID, height int) string {
 	rows := make([]string, 0, len(viewOrder))
 	for _, v := range viewOrder {
 		marker := " "
-		style := mutedStyle
+		style := mutedStyle(t)
 		if v == active {
 			marker = "▌"
-			style = navActiveStyle
+			style = navActiveStyle(t)
 		}
 		rows = append(rows, style.Render(fmt.Sprintf("%s%s %s", marker, v.shortKey(), v.label())))
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return panelBaseStyle.
-		BorderForeground(colorPrimary).
+	return panelBaseStyle(t).
 		Width(14).
 		Height(height).
 		Render(content)

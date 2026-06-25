@@ -5,18 +5,19 @@ import (
 )
 
 func (m model) renderFooter() string {
+	t := m.theme
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	if docWidth <= 0 {
 		return ""
 	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	helpView := fitLine(mutedStyle.Render(m.footerKeyHint()), innerWidth)
-	left := statusStyle.Render(fallback(m.statusLine, T().StatusReady))
+	innerWidth := max(0, docWidth-headerStyle(t).GetHorizontalFrameSize())
+	helpView := fitLine(mutedStyle(t).Render(m.footerKeyHint()), innerWidth)
+	left := statusStyle(t).Render(fallback(m.statusLine, T().StatusReady))
 	if m.searchMode {
-		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle.Render(T().SearchLabel), m.search.View())
+		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle(t).Render(T().SearchLabel), m.search.View())
 	}
 	row := lipgloss.JoinVertical(lipgloss.Left, fitLine(left, innerWidth), helpView)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(row))
+	return docStyle.Width(docWidth).Render(headerStyle(t).Width(innerWidth).MaxWidth(docWidth).Render(row))
 }
 
 func (m model) focusLabel() string {
@@ -45,26 +46,27 @@ func (m model) footerKeyHint() string {
 }
 
 func (m model) renderHelpOverlay() string {
-	title := titleStyle.Render(T().HelpTitle)
+	t := m.theme
+	title := titleStyle(t).Render(T().HelpTitle)
 
 	rows := []string{title, ""}
-	rows = append(rows, mutedStyle.Render("1-5  switch view"))
-	rows = append(rows, mutedStyle.Render("Tab  next view"))
-	rows = append(rows, mutedStyle.Render("j/k  move cursor"))
-	rows = append(rows, mutedStyle.Render("/    search/filter"))
-	rows = append(rows, mutedStyle.Render("r    refresh"))
-	rows = append(rows, mutedStyle.Render("q    quit"))
-	rows = append(rows, mutedStyle.Render("?    toggle help"))
+	rows = append(rows, mutedStyle(t).Render("1-5  switch view"))
+	rows = append(rows, mutedStyle(t).Render("Tab  next view"))
+	rows = append(rows, mutedStyle(t).Render("j/k  move cursor"))
+	rows = append(rows, mutedStyle(t).Render("/    search/filter"))
+	rows = append(rows, mutedStyle(t).Render("r    refresh"))
+	rows = append(rows, mutedStyle(t).Render("q    quit"))
+	rows = append(rows, mutedStyle(t).Render("?    toggle help"))
 	rows = append(rows, "")
-	rows = append(rows, mutedStyle.Render("Proxies: t test  h/l focus  enter switch"))
-	rows = append(rows, mutedStyle.Render("Conns:   d close  D close all"))
-	rows = append(rows, mutedStyle.Render("Logs:    l level"))
-	rows = append(rows, mutedStyle.Render("Config:  enter toggle"))
+	rows = append(rows, mutedStyle(t).Render("Proxies: t test  h/l focus  enter switch"))
+	rows = append(rows, mutedStyle(t).Render("Conns:   d close  D close all"))
+	rows = append(rows, mutedStyle(t).Render("Logs:    l level"))
+	rows = append(rows, mutedStyle(t).Render("Config:  enter toggle"))
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	return lipgloss.Place(
 		m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
-		panelBaseStyle.BorderForeground(colorAccent).Padding(1, 2).Render(content),
+		panelBaseStyle(t).Padding(1, 2).Render(content),
 	)
 }

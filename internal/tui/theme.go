@@ -1,85 +1,109 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
 
-// theme.go 集中管理所有色彩 token 与样式定义。
-// 详见 docs/superpowers/specs/2026-06-22-tui-redesign-design.md §7。
-
-var (
-	// ── Theme palette ──────────────────────────────────────────────────
-	colorPrimary     = lipgloss.Color("39") // bright blue — identity & structure
-	colorAccent      = lipgloss.Color("86") // bright cyan-green — focus & active
-	colorSurfaceHigh = lipgloss.Color("62") // deep indigo — selection bg
-
-	colorTextPrimary   = lipgloss.Color("252") // near-white
-	colorTextSecondary = lipgloss.Color("246") // mid-gray
-	colorTextMuted     = lipgloss.Color("243") // dim gray
-
-	// Semantic: state & delay colors
-	colorSuccess = lipgloss.Color("42")  // green  — low delay / on
-	colorWarning = lipgloss.Color("220") // yellow — mid delay
-	colorInfo    = lipgloss.Color("117") // light blue
-	colorDanger  = lipgloss.Color("203") // red — high delay / off / error
-	colorOrange  = lipgloss.Color("215") // orange — mid-high delay
-
-	// ── Layout constants ──────────────────────────────────────────────
-	columnGap = 2
-
-	docStyle = lipgloss.NewStyle().Padding(0, 1)
-
-	headerStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(0, 1)
-
-	panelBaseStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1)
-
-	activePanelStyle   = panelBaseStyle.BorderForeground(colorAccent)
-	inactivePanelStyle = panelBaseStyle.BorderForeground(lipgloss.Color("237"))
-
-	navActiveStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).Bold(true)
-
-	// ── Typography ──────────────────────────────────────────────────────
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	subtitleStyle = lipgloss.NewStyle().Foreground(colorTextSecondary)
-
-	// ── Status & feedback ──────────────────────────────────────────────
-	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("230")).
-			Background(colorSurfaceHigh).
-			Padding(0, 1)
-	mutedStyle    = lipgloss.NewStyle().Foreground(colorTextMuted)
-	selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorTextPrimary).
-			Background(colorSurfaceHigh)
-	currentStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).Bold(true)
-
-	onStyle  = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
-	offStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
-
-	fitLineStyle = lipgloss.NewStyle()
+	"labproxy/internal/tui/theme"
 )
 
+// theme.go 提供基于 Theme 的样式工厂函数，替代旧的全局 var。
+// 设计原则：无边框，用背景色和间距区分层次。
+
+// ── Layout constants ──────────────────────────────────────────────────
+
+const columnGap = 2
+
+var docStyle = lipgloss.NewStyle().Padding(0, 1)
+
+// ── Style factories ───────────────────────────────────────────────────
+
+func headerStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Background(t.Surface).
+		Padding(0, 1)
+}
+
+func panelBaseStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Padding(0, 1).
+		Background(t.Surface)
+}
+
+func titleStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(t.Accent)
+}
+
+func subtitleStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.TextSecondary)
+}
+
+func mutedStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.TextMuted)
+}
+
+func selectedStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(t.TextPrimary).
+		Background(t.SurfaceHigh)
+}
+
+func currentStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(t.Accent).Bold(true)
+}
+
+func navActiveStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(t.Accent).Bold(true)
+}
+
+func statusStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(t.TextPrimary).
+		Background(t.SurfaceHigh).
+		Padding(0, 1)
+}
+
+func onStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.Success).Bold(true)
+}
+
+func offStyle(t *theme.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.TextMuted)
+}
+
+// ── Semantic style helpers ────────────────────────────────────────────
+
 // getDelayStyle 按延迟返回色阶样式：<50 绿 / <150 黄 / <300 橙 / ≥300 红 / -1 红(timeout) / 其余≤0 灰。
-func getDelayStyle(ms int) lipgloss.Style {
+func getDelayStyle(t *theme.Theme, ms int) lipgloss.Style {
 	switch {
 	case ms <= 0:
 		if ms == -1 {
-			return lipgloss.NewStyle().Foreground(colorDanger)
+			return lipgloss.NewStyle().Foreground(t.Danger)
 		}
-		return mutedStyle
+		return mutedStyle(t)
 	case ms < 50:
-		return lipgloss.NewStyle().Foreground(colorSuccess)
+		return lipgloss.NewStyle().Foreground(t.Success)
 	case ms < 150:
-		return lipgloss.NewStyle().Foreground(colorWarning)
+		return lipgloss.NewStyle().Foreground(t.Warning)
 	case ms < 300:
-		return lipgloss.NewStyle().Foreground(colorOrange)
+		return lipgloss.NewStyle().Foreground(t.Orange)
 	default:
-		return lipgloss.NewStyle().Foreground(colorDanger)
+		return lipgloss.NewStyle().Foreground(t.Danger)
+	}
+}
+
+// getModeStyle 返回代理模式标签的颜色样式。
+func getModeStyle(t *theme.Theme, mode string) lipgloss.Style {
+	switch mode {
+	case "rule":
+		return lipgloss.NewStyle().Foreground(t.Success)
+	case "global":
+		return lipgloss.NewStyle().Foreground(t.Warning)
+	case "direct":
+		return lipgloss.NewStyle().Foreground(t.Info)
+	default:
+		return mutedStyle(t)
 	}
 }

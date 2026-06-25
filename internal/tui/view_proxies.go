@@ -10,7 +10,8 @@ import (
 
 // renderProxiesView 渲染 Proxies 视图主体：左 group 列表 + 右节点 list。
 func (m model) renderProxiesView(width, height int) string {
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	t := m.theme
+	panelFrameWidth := panelBaseStyle(t).GetHorizontalFrameSize()
 	columnContentWidth := max(0, width-columnGap-panelFrameWidth*2)
 	groupsWidth := min(m.calcGroupsMinWidth(columnContentWidth), columnContentWidth)
 	optionsWidth := max(0, columnContentWidth-groupsWidth)
@@ -51,7 +52,7 @@ func (m *model) rebuildGroups() {
 
 	// Update cached adaptive layout width for Groups panel
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(m.theme).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
 	if columnContentWidth > 0 {
 		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
@@ -154,11 +155,10 @@ func (m model) calcGroupsMinWidth(columnContentWidth int) int {
 }
 
 func (m model) renderGroupsPanel(width, height int) string {
-	style := inactivePanelStyle
-	if m.focus == focusGroups {
-		style = activePanelStyle
-	}
+	t := m.theme
+	style := panelBaseStyle(t)
 	content := renderPanelContent(
+		t,
 		T().PanelGroups,
 		T().PanelGroupsHint,
 		m.visibleGroupRows(width, max(0, height)),
@@ -169,10 +169,8 @@ func (m model) renderGroupsPanel(width, height int) string {
 }
 
 func (m model) renderOptionsPanel(width, height int) string {
-	style := inactivePanelStyle
-	if m.focus == focusOptions {
-		style = activePanelStyle
-	}
+	t := m.theme
+	style := panelBaseStyle(t)
 	group := m.currentGroup()
 	title := T().PanelOptions
 	subtitle := T().SelectGroupFirst
@@ -181,6 +179,7 @@ func (m model) renderOptionsPanel(width, height int) string {
 		subtitle = fmt.Sprintf(T().CurrentFmt, fallback(group.Current, "-"))
 	}
 	content := renderPanelContent(
+		t,
 		title,
 		subtitle,
 		m.visibleOptionRows(width, max(0, height)),
@@ -194,8 +193,9 @@ func (m model) visibleGroupRows(width, limit int) []string {
 	if limit <= 0 || width <= 0 {
 		return nil
 	}
+	t := m.theme
 	if len(m.groups) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoGroupsMatchFilter), width)}
+		return []string{fitLine(mutedStyle(t).Render("  "+T().NoGroupsMatchFilter), width)}
 	}
 	start, end := window(m.groupIndex, len(m.groups), limit)
 	rows := make([]string, 0, end-start)
@@ -225,18 +225,18 @@ func (m model) visibleGroupRows(width, limit int) []string {
 
 		baseStyle := lipgloss.NewStyle()
 		if isSelected {
-			baseStyle = selectedStyle
+			baseStyle = selectedStyle(t)
 		} else if group.Current != "" {
-			baseStyle = currentStyle
+			baseStyle = currentStyle(t)
 		}
 
 		currentMark := ""
 		if group.Current != "" {
-			bracketStyle := mutedStyle
-			curStyle := currentStyle
+			bracketStyle := mutedStyle(t)
+			curStyle := currentStyle(t)
 			if isSelected {
-				bracketStyle = bracketStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
-				curStyle = curStyle.Inherit(selectedStyle).Foreground(colorAccent)
+				bracketStyle = bracketStyle.Inherit(selectedStyle(t)).Foreground(t.TextMuted)
+				curStyle = curStyle.Inherit(selectedStyle(t)).Foreground(t.Accent)
 			}
 			currentMark = baseStyle.Render(" ") + bracketStyle.Render("[") + curStyle.Render(group.Current) + bracketStyle.Render("]")
 		}
@@ -251,9 +251,10 @@ func (m model) visibleOptionRows(width, limit int) []string {
 	if limit <= 0 || width <= 0 {
 		return nil
 	}
+	t := m.theme
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoSelectableNodes), width)}
+		return []string{fitLine(mutedStyle(t).Render("  "+T().NoSelectableNodes), width)}
 	}
 	start, end := window(m.optionIndex, len(group.Options), limit)
 	rows := make([]string, 0, end-start)
@@ -263,28 +264,29 @@ func (m model) visibleOptionRows(width, limit int) []string {
 
 		baseStyle := lipgloss.NewStyle()
 		if isSelected {
-			baseStyle = selectedStyle
+			baseStyle = selectedStyle(t)
 		}
 
 		var markerStyle lipgloss.Style
 		markerChar := "○"
 		if option.Selected {
-			markerStyle = lipgloss.NewStyle().Foreground(colorSuccess)
+			markerStyle = lipgloss.NewStyle().Foreground(t.Success)
 			markerChar = "●"
 		} else {
-			markerStyle = mutedStyle
+			markerStyle = mutedStyle(t)
 		}
 		if isSelected {
-			markerStyle = markerStyle.Inherit(selectedStyle).Foreground(markerStyle.GetForeground())
+			markerStyle = markerStyle.Inherit(selectedStyle(t)).Foreground(markerStyle.GetForeground())
 		}
 
-		delayStyle := getDelayStyle(option.DelayMS)
+		delayStyle := getDelayStyle(t, option.DelayMS)
 		if isSelected {
-			delayStyle = delayStyle.Inherit(selectedStyle).Foreground(delayStyle.GetForeground())
+			delayStyle = delayStyle.Inherit(selectedStyle(t)).Foreground(delayStyle.GetForeground())
 		}
 		delayStrPlain := plainDelayLabel(option.DelayMS)
 
-		reserved := 1 + 1 + 1 + 1 + ansi.StringWidth(delayStrPlain)
+		markerWidth := ansi.StringWidth(markerChar)
+		reserved := 1 + markerWidth + 1 + 1 + ansi.StringWidth(delayStrPlain)
 		nameWidth := width - reserved
 		if nameWidth < 4 {
 			nameWidth = 4
@@ -300,4 +302,3 @@ func (m model) visibleOptionRows(width, limit int) []string {
 	}
 	return rows
 }
-

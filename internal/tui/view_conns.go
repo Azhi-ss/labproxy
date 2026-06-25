@@ -7,7 +7,18 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+)
+
+// 连接表格列宽（视觉列，非字节）。
+const (
+	connColTarget = 28 // 主机/目标
+	connColRule   = 14 // 规则名
+	connColChain  = 18 // 代理链
+	connColDown   = 10 // 下载（右对齐）
+	connColUp     = 10 // 上传（右对齐）
+	connColGap    = 2  // 列间距
 )
 
 // renderConnectionsView 渲染 Connections 视图：占满主区的连接表。
@@ -110,33 +121,110 @@ func (m model) closeConnectionCmd(target string) tea.Cmd {
 }
 
 func (m model) renderConnectionsPanel(width, height int) string {
+	t := m.theme
 	subtitle := fmt.Sprintf(T().ConnectionStatsFmt, len(m.connections.Connections), formatSize(m.connections.DownloadTotal), formatSize(m.connections.UploadTotal))
 	content := renderPanelContent(
+		t,
 		T().PanelConnections,
 		subtitle,
 		m.visibleConnectionRows(width, max(0, height)),
 		width,
 		height,
 	)
-	return renderPanel(inactivePanelStyle, width, height, content)
+	return renderPanel(panelBaseStyle(t), width, height, content)
 }
 
 func (m model) visibleConnectionRows(width, limit int) []string {
 	if limit <= 0 || width <= 0 {
 		return nil
 	}
+	t := m.theme
 	connections := m.connections.Connections
 	if len(connections) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoActiveConnections), width)}
+		return []string{fitLine(mutedStyle(t).Render("  "+T().NoActiveConnections), width)}
 	}
-	if len(connections) > limit {
-		connections = connections[:limit]
-	}
-	rows := make([]string, 0, len(connections))
-	for _, conn := range connections {
-		line := fmt.Sprintf(" %s  %s  %s  ↓%s ↑%s", connectionTarget(conn), mutedStyle.Render(conn.Rule), strings.Join(conn.Chains, " → "), formatSize(conn.Download), formatSize(conn.Upload))
-		line = ansi.Truncate(line, width, "…")
-		rows = append(rows, fitLine(line, width))
+
+	// 表头
+	header := connColumn(
+		mutedStyle(t), "Host", connColTarget,
+		mutedStyle(t), "Rule", connColRule,
+		mutedStyle(t), "Chain", connColChain,
+		mutedStyle(t), "↓Down", connColDown,
+		mutedStyle(t), "↑Up", connColUp,
+	)
+
+	rows := make([]string, 0, len(connections)+1)
+	rows = append(rows, fitLine(header, width))
+
+	for i, conn := range connections {
+		if i >= limit-1 {
+			break
+		}
+		isSelected := i == m.connIndex
+		target := connectionTarget(conn)
+		rule := conn.Rule
+		chain := strings.Join(conn.Chains, " → ")
+		down := formatSize(conn.Download)
+		up := formatSize(conn.Upload)
+
+		baseStyle := lipgloss.NewStyle().Foreground(t.TextPrimary)
+		if isSelected {
+			baseStyle = selectedStyle(t)
+		}
+
+		line := connColumnStyled(
+			baseStyle, target, connColTarget,
+			mutedStyle(t), rule, connColRule,
+			mutedStyle(t), chain, connColChain,
+			mutedStyle(t), down, connColDown,
+			mutedStyle(t), up, connColUp,
+		)
+		rows = append(rows, fitStyledLine(line, width, baseStyle))
 	}
 	return rows
+}
+
+// connColumn 构建固定宽度列行。
+// 参数格式: style1, text1, width1, style2, text2, width2, ...
+func connColumn(args ...any) string {
+	var parts []string
+	for i := 0; i < len(args); i += 3 {
+		style := args[i].(lipgloss.Style)
+		text := args[i+1].(string)
+		colWidth := args[i+2].(int)
+		truncated := ansi.Truncate(text, colWidth, "…")
+		visLen := ansi.StringWidth(truncated)
+		padding := colWidth - visLen
+		if padding < 0 {
+			padding = 0
+		}
+		parts = append(parts, style.Render(truncated+strings.Repeat(" ", padding)))
+	}
+	return strings.Join(parts, strings.Repeat(" ", connColGap))
+}
+
+// connColumnStyled 类似 connColumn，但第一列使用自定义样式。
+func connColumnStyled(firstStyle lipgloss.Style, firstText string, firstWidth int, args ...any) string {
+	truncated := ansi.Truncate(firstText, firstWidth, "…")
+	visLen := ansi.StringWidth(truncated)
+	padding := firstWidth - visLen
+	if padding < 0 {
+		padding = 0
+	}
+	first := firstStyle.Render(truncated + strings.Repeat(" ", padding))
+
+	var rest []string
+	for i := 0; i < len(args); i += 3 {
+		style := args[i].(lipgloss.Style)
+		text := args[i+1].(string)
+		colWidth := args[i+2].(int)
+		truncated := ansi.Truncate(text, colWidth, "…")
+		visLen := ansi.StringWidth(truncated)
+		padding := colWidth - visLen
+		if padding < 0 {
+			padding = 0
+		}
+		rest = append(rest, style.Render(truncated+strings.Repeat(" ", padding)))
+	}
+	return first + strings.Repeat(" ", connColGap) + strings.Join(rest, strings.Repeat(" ", connColGap))
 }
