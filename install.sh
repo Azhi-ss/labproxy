@@ -71,7 +71,10 @@ _set_bin
 url=""
 if ! _valid_config "$RESOURCES_CONFIG"; then
     echo -n "$(_okcat '🔗' '输入订阅地址：')"
-    read -r url
+    # read 在 EOF（无 stdin / 管道输入耗尽）时返回非 0，避免非交互调用死锁
+    if ! read -r url; then
+        _error_quit "未提供订阅地址（stdin 已结束）。请交互运行安装，或预先将配置写入 ${RESOURCES_CONFIG}"
+    fi
     _okcat '⏳' '正在下载...'
 
     if ! _download_config "$RESOURCES_CONFIG" "$url"; then
