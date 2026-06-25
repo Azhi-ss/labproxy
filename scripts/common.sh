@@ -1146,24 +1146,16 @@ function _error_quit() {
 
 _is_bind() {
     local port=$1
-    # 跨平台端口监听检测：
-    #   - macOS/BSD: 优先 lsof（ss 不存在，netstat -lnptu 是 Linux 写法会误判）；
-    #     lsof 可能漏检 root-owned 进程（如特权服务下的 mihomo），用 curl probe 兜底
+    # 跨平台端口监听检测（仅检测 LISTEN 状态，不检测端口可达性）：
+    #   - macOS/BSD: 优先 lsof（ss 不存在，netstat -lnptu 是 Linux 写法会误判）
     #   - Linux: 回退 ss / netstat
     #   - 输出格式兼容 ":PORT"（Linux）与 "*.PORT"（macOS/BSD），用 [:.] 匹配分隔符
+    # 注意：不要用 curl probe 兜底——curl 检测的是「端口可达」而非「端口在 LISTEN」，
+    # 会让 _get_random_port（找空闲端口）对空闲端口误报为占用，导致死循环。
+    # root-owned mihomo（lsof 漏检）的场景由调用方按需用 _labproxy_service_active 判断。
     if command -v lsof >/dev/null 2>&1; then
-        local lsof_out
-        lsof_out=$(lsof -iTCP:"$port" -sTCP:LISTEN -nP 2>/dev/null)
-        if [ -n "$lsof_out" ]; then
-            echo "$lsof_out"
-            return 0
-        fi
-        # lsof may miss root-owned processes; probe with curl
-        if command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --connect-timeout 1 "http://127.0.0.1:$port" 2>/dev/null; then
-            echo "127.0.0.1:$port (curl probe)"
-            return 0
-        fi
-        return 1
+        lsof -iTCP:"$port" -sTCP:LISTEN -nP 2>/dev/null
+        return $?
     fi
     { ss -lntup 2>/dev/null || netstat -tunlp 2>/dev/null; } | grep -E "[:.]${port}\b"
 }
