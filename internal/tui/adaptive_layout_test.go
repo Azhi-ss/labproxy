@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"labproxy/internal/proxy"
+	"labproxy/internal/tui/theme"
 )
 
 // helper to create a test model with groups
@@ -17,7 +18,7 @@ func makeTestModel(groups []GroupView, width int) model {
 	m.height = 24
 	// trigger cache update via rebuildGroups logic
 	docWidth := max(0, width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
 	if columnContentWidth > 0 {
 		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
@@ -287,7 +288,7 @@ func TestRenderBody_OptionsPanelHasMinimumSpace(t *testing.T) {
 	m.rebuildGroups()
 
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
 
 	leftWidth := m.groupPanelWidth

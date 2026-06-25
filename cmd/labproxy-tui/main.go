@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"labproxy/internal/config"
 	"labproxy/internal/proxy"
 	"labproxy/internal/tui"
@@ -19,8 +21,17 @@ func main() {
 		mixinConfig    = flag.String("mixin-config", "", "path to mixin config for system-proxy status")
 		restartCommand = flag.String("restart-command", "", "shell command used to restart labproxy runtime")
 		lang           = flag.String("lang", "en", "ui language: en or zh")
+		theme          = flag.String("theme", "auto", "color theme: auto, light, or dark")
 	)
 	flag.Parse()
+
+	// 手动覆盖主题
+	switch *theme {
+	case "light":
+		lipgloss.SetHasDarkBackground(false)
+	case "dark":
+		lipgloss.SetHasDarkBackground(true)
+	}
 
 	if len(os.Args) >= 2 && os.Args[1] == "rules" {
 		os.Exit(runRulesCLI(os.Stdout, os.Stderr, os.Args[2:], *mixinConfig))

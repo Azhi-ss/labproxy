@@ -957,15 +957,32 @@ function _get_tui_archive() {
         ;;
     esac
 
-    # 查找匹配的预编译 TUI
-    local candidate="${ZIP_BASE_DIR}/labproxy-tui-${os}-${arch}.tar.gz"
-    if [ -f "$candidate" ]; then
-        ZIP_LABPROXY_TUI="$candidate"
-        _okcat "使用预编译 TUI：$(basename "$ZIP_LABPROXY_TUI")"
+    # 从 GitHub Releases 下载预编译 TUI
+    local tui_version="${LABPROXY_TUI_VERSION:-latest}"
+    local asset_name="labproxy-tui-${os}-${arch}.tar.gz"
+    local cache_dir="${LABPROXY_HOME_DIR}/cache"
+    local dest="${cache_dir}/${asset_name}"
+
+    mkdir -p "$cache_dir"
+
+    # 如果缓存已有且版本非 latest，直接使用
+    if [ -f "$dest" ] && [ "$tui_version" != "latest" ]; then
+        ZIP_LABPROXY_TUI="$dest"
+        _okcat "使用缓存预编译 TUI：${asset_name}"
         return 0
     fi
 
-    # 没有找到预编译版本
+    local url="https://github.com/Azhi-ss/labproxy/releases/download/${tui_version}/${asset_name}"
+
+    _okcat '⏳' "正在下载预编译 TUI：${asset_name}"
+
+    if _download_file "$url" "$dest" "$asset_name" >&2; then
+        ZIP_LABPROXY_TUI="$dest"
+        _okcat "预编译 TUI 下载完成：${asset_name}"
+        return 0
+    fi
+
+    # 下载失败，回退到源码构建
     ZIP_LABPROXY_TUI=""
     _failcat "未找到预编译 TUI（${os}/${arch}），将尝试从源码构建"
     return 1
@@ -1130,14 +1147,25 @@ function _error_quit() {
 _is_bind() {
     local port=$1
     # 跨平台端口监听检测：
-    #   - macOS/BSD: 优先 lsof（ss 不存在，netstat -lnptu 是 Linux 写法会误判）
+    #   - macOS/BSD: 优先 lsof（ss 不存在，netstat -lnptu 是 Linux 写法会误判）；
+    #     lsof 可能漏检 root-owned 进程（如特权服务下的 mihomo），用 curl probe 兜底
     #   - Linux: 回退 ss / netstat
     #   - 输出格式兼容 ":PORT"（Linux）与 "*.PORT"（macOS/BSD），用 [:.] 匹配分隔符
     if command -v lsof >/dev/null 2>&1; then
-        lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null
-    else
-        { ss -lntup 2>/dev/null || netstat -tunlp 2>/dev/null; } | grep -E "[:.]${port}\b"
+        local lsof_out
+        lsof_out=$(lsof -iTCP:"$port" -sTCP:LISTEN -nP 2>/dev/null)
+        if [ -n "$lsof_out" ]; then
+            echo "$lsof_out"
+            return 0
+        fi
+        # lsof may miss root-owned processes; probe with curl
+        if command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --connect-timeout 1 "http://127.0.0.1:$port" 2>/dev/null; then
+            echo "127.0.0.1:$port (curl probe)"
+            return 0
+        fi
+        return 1
     fi
+    { ss -lntup 2>/dev/null || netstat -tunlp 2>/dev/null; } | grep -E "[:.]${port}\b"
 }
 
 _is_already_in_use() {

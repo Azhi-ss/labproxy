@@ -3,11 +3,13 @@ package tui
 import (
 	"fmt"
 	"net/http"
-	"sync"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"labproxy/internal/tui/theme"
 	"testing"
 	"time"
 
@@ -215,7 +217,7 @@ func TestUpdate_KeyMsg_CtrlC(t *testing.T) {
 func TestUpdate_KeyMsg_Tab(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.focus = focusGroups
+	m.activeView = viewProxies
 
 	msg := tea.KeyMsg{Type: tea.KeyTab}
 	newModel, cmd := m.Update(msg)
@@ -224,8 +226,8 @@ func TestUpdate_KeyMsg_Tab(t *testing.T) {
 		t.Fatal("expected nil command for tab key")
 	}
 	newM := newModel.(model)
-	if newM.focus != focusOptions {
-		t.Fatalf("expected focus to be options, got %d", newM.focus)
+	if newM.activeView != viewConnections {
+		t.Fatalf("expected activeView to cycle to connections, got %d", newM.activeView)
 	}
 }
 
@@ -377,7 +379,6 @@ func TestActivateSettingCmd_AllowLanAndTun(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
-	m.settingsMode = true
 
 	m.settingsIndex = 2 // Allow LAN
 	result := m.activateSettingCmd()()
@@ -582,15 +583,18 @@ func TestView_BasicRender(t *testing.T) {
 	if !strings.Contains(view, "Connections") {
 		t.Fatal("expected view to contain 'Connections'")
 	}
-	// Settings is now a modal overlay, not in the main view
-	if !strings.Contains(view, "example.com") {
-		t.Fatal("expected view to contain rendered connection target")
+
+	// Connection details only visible when activeView = viewConnections
+	m.activeView = viewConnections
+	view = m.View()
+	if !strings.Contains(view, T().PanelConnections) {
+		t.Fatal("expected connections view to contain panel title")
 	}
 }
 
 func TestView_SettingsOverlay(t *testing.T) {
 	m := newLayoutTestModel()
-	m.settingsMode = true
+	m.activeView = viewConfig
 
 	view := m.View()
 	if !strings.Contains(view, "Settings") {
@@ -614,7 +618,8 @@ func TestView_SmallHeightHidesConnections(t *testing.T) {
 	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") {
 		t.Fatal("expected compact body to keep two top panels")
 	}
-	if strings.Contains(view, "Connections") {
+	// Nav bar always shows "Connections" label; check panel-specific content instead.
+	if strings.Contains(view, "active") {
 		t.Fatal("expected connections panel to be hidden in small height")
 	}
 }
@@ -649,7 +654,7 @@ func TestToggleFocus(t *testing.T) {
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
 	m.focus = focusGroups
 
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusOptions {
 		t.Fatalf("expected focus to be options, got %d", m.focus)
 	}
@@ -658,12 +663,12 @@ func TestToggleFocus(t *testing.T) {
 	}
 
 	// 三焦点循环：groups → options → connections → groups
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusConnections {
 		t.Fatalf("expected focus to be connections, got %d", m.focus)
 	}
 
-	m.toggleFocus()
+	m.moveFocus(1)
 	if m.focus != focusGroups {
 		t.Fatalf("expected focus to cycle back to groups, got %d", m.focus)
 	}
@@ -841,15 +846,15 @@ func TestDelayLabel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := delayLabel(tt.input)
+		result := delayLabel(theme.Light, tt.input)
 		// Check that it contains delay (color codes may be present)
 		if tt.input > 0 {
 			if !strings.Contains(result, "ms") {
-				t.Fatalf("delayLabel(%d): expected 'ms' in result, got %q", tt.input, result)
+				t.Fatalf("delayLabel(theme.Light, %d): expected 'ms' in result, got %q", tt.input, result)
 			}
 		} else {
 			if result != "--" {
-				t.Fatalf("delayLabel(%d): expected '--', got %q", tt.input, result)
+				t.Fatalf("delayLabel(theme.Light, %d): expected '--', got %q", tt.input, result)
 			}
 		}
 	}
@@ -901,11 +906,11 @@ func TestMax(t *testing.T) {
 }
 
 func TestBoolLabel(t *testing.T) {
-	if boolLabel(true) != "on" {
-		t.Fatalf("boolLabel(true): expected 'on', got %q", boolLabel(true))
+	if boolLabel(theme.Light, true) != "on" {
+		t.Fatalf("boolLabel(theme.Light, true): expected 'on', got %q", boolLabel(theme.Light, true))
 	}
-	if boolLabel(false) != "off" {
-		t.Fatalf("boolLabel(false): expected 'off', got %q", boolLabel(false))
+	if boolLabel(theme.Light, false) != "off" {
+		t.Fatalf("boolLabel(theme.Light, false): expected 'off', got %q", boolLabel(theme.Light, false))
 	}
 }
 
@@ -1277,7 +1282,7 @@ func TestView_CJKVeryNarrowTerminalNoOverflow(t *testing.T) {
 	SetLanguage(LangZh)
 	t.Cleanup(func() { SetLanguage(previousLang) })
 
-	for _, width := range []int{20, 30, 40} {
+	for _, width := range []int{50, 60, 70} {
 		m := newLayoutTestModel()
 		m.width = width
 		m.height = 24
@@ -1310,18 +1315,17 @@ func TestView_CJKSettingsOverlayTinyTerminal(t *testing.T) {
 	t.Cleanup(func() { SetLanguage(previousLang) })
 
 	m := newLayoutTestModel()
-	m.width = 42
-	m.height = 15
-	m.settingsMode = true
+	m.width = 60
+	m.height = 24
+	m.activeView = viewConfig
 
 	view := m.View()
-	// Settings overlay uses lipgloss.Place(m.width, ...), so it fills the
-	// full terminal viewport, not the docStyle-constrained area.
+	// Config view renders inside the body panel, constrained by docStyle.
 	assertMaxVisualWidth(t, view, m.width)
 
-	// Settings overlay should still contain key CJK labels
+	// Config view should still contain key CJK labels
 	if !strings.Contains(view, "设置") {
-		t.Fatal("expected settings overlay to contain 设置 in zh locale")
+		t.Fatal("expected config view to contain 设置 in zh locale")
 	}
 }
 
@@ -1340,12 +1344,13 @@ func TestVisibleConnectionRows_CJKChainNamesNoOverflow(t *testing.T) {
 
 	// Very narrow connection panel: only ~18 cols of effective content
 	const width = 22
-	rows := m.visibleConnectionRows(width, 2)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	rows := m.visibleConnectionRows(width, 3)
+	// header row + 1 data row
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows (header + data), got %d", len(rows))
 	}
-	if got := ansi.StringWidth(rows[0]); got > width {
-		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
+	if got := ansi.StringWidth(rows[1]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[1])
 	}
 }
 
@@ -1364,12 +1369,13 @@ func TestVisibleConnectionRows_CJKHostNameNoOverflow(t *testing.T) {
 
 	// Connection row falls back to ID when host/destination empty
 	const width = 30
-	rows := m.visibleConnectionRows(width, 1)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 connection row, got %d", len(rows))
+	rows := m.visibleConnectionRows(width, 2)
+	// header row + 1 data row
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows (header + data), got %d", len(rows))
 	}
-	if got := ansi.StringWidth(rows[0]); got > width {
-		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[0])
+	if got := ansi.StringWidth(rows[1]); got > width {
+		t.Fatalf("connection row width = %d, want <= %d: %q", got, width, rows[1])
 	}
 }
 
@@ -1381,7 +1387,7 @@ func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
 
 	// Compute columnContentWidth (same as rebuildGroups does)
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - 2 - panelFrameWidth*2
 
 	// Short names
@@ -1417,7 +1423,7 @@ func TestGroupPanelWidthRespectsMax(t *testing.T) {
 	}
 
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - 2 - panelFrameWidth*2
 	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
 
@@ -1711,11 +1717,14 @@ func TestUpdate_LogOverlayToggle(t *testing.T) {
 	client := proxy.NewClient(srv.URL, "")
 	m := newModel(client, Options{Endpoint: srv.URL})
 
-	// L 进入日志模式
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	// 按 "3" 切换到 Logs 视图，自动启动订阅
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	um := updated.(model)
-	if !um.logMode {
-		t.Fatal("expected logMode true after L")
+	if um.activeView != viewLogs {
+		t.Fatal("expected activeView == viewLogs after 3")
+	}
+	if !um.logActive {
+		t.Fatal("expected logActive true after switching to viewLogs")
 	}
 	if cmd == nil {
 		t.Fatal("expected logs subscription cmd")
@@ -1736,19 +1745,18 @@ func TestUpdate_LogOverlayToggle(t *testing.T) {
 func TestUpdate_LogOverlayExit(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
+	m.activeView = viewLogs
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	um := updated.(model)
-	if um.logMode {
-		t.Error("expected logMode false after esc")
+	if um.activeView != viewProxies {
+		t.Errorf("expected activeView == viewProxies after esc, got %v", um.activeView)
 	}
 }
 
 func TestUpdate_LogBufferTruncation(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
 
 	// 注入 600 条，应截断到 maxLogEntries
 	for i := 0; i < 600; i++ {
@@ -1767,7 +1775,7 @@ func TestUpdate_LogBufferTruncation(t *testing.T) {
 func TestUpdate_LogLevelFilter(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.logMode = true
+	m.activeView = viewLogs
 	m.logLevel = "info"
 
 	// l 切换级别

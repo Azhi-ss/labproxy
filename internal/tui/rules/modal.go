@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"labproxy/internal/rules"
+	"labproxy/internal/tui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -27,6 +28,7 @@ type Modal struct {
 	open   bool
 	view   View
 	cursor int
+	theme  *theme.Theme
 }
 
 // NewModal builds a modal bound to the given mixin config path.
@@ -38,6 +40,7 @@ func NewModal(mixinPath string) *Modal {
 		path:  mixinPath,
 		store: store,
 		view:  ViewMenu,
+		theme: theme.Current(),
 	}
 }
 
@@ -62,6 +65,13 @@ func (m *Modal) IsOpen() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.open
+}
+
+// SetTheme updates the theme used for rendering.
+func (m *Modal) SetTheme(t *theme.Theme) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.theme = t
 }
 
 // View renders the current screen. Returns "" when closed.

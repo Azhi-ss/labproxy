@@ -3,28 +3,27 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
 	appconfig "labproxy/internal/config"
 	"labproxy/internal/proxy"
+	"labproxy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // RulesModal is the contract for the rules modal — implemented in internal/tui/rules.
 type RulesModal interface {
 	IsOpen() bool
 	Open()
+	Close()
 	Update(tea.KeyMsg) bool
 	View() string
+	SetTheme(t *theme.Theme)
 }
 
 type Options struct {
@@ -66,36 +65,6 @@ const maxLogEntries = 500
 
 // logLevels 是 l 键循环切换的日志级别顺序。
 var logLevels = []string{"info", "warning", "error", "debug"}
-
-type keyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Left        key.Binding
-	Right       key.Binding
-	Tab         key.Binding
-	Select      key.Binding
-	Refresh     key.Binding
-	Search      key.Binding
-	Settings    key.Binding
-	Mode        key.Binding
-	SystemProxy key.Binding
-	Back        key.Binding
-	Quit        key.Binding
-	Rules       key.Binding
-	TestGroup   key.Binding
-	Logs        key.Binding
-}
-
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Tab, k.Select, k.Refresh, k.Settings, k.Rules, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Select, k.Refresh, k.Search, k.Settings, k.Mode, k.SystemProxy, k.Back, k.Quit},
-	}
-}
 
 type refreshMsg struct {
 	version            proxy.Version
@@ -155,6 +124,8 @@ type model struct {
 	allowLanEnabled    bool
 	tunEnabled         bool
 
+	theme *theme.Theme
+
 	version string
 	mode    string
 	up      int64
@@ -164,16 +135,15 @@ type model struct {
 	connections   proxy.ConnectionsResponse
 	groups        []GroupView
 	focus         paneFocus
+	activeView    viewID
 	groupIndex    int
 	optionIndex   int
-	settingsIndex int
-	settingsMode  bool
+		settingsIndex int
 
 	connIndex        int    // 连接面板选中行
 	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
 
-	// 日志覆盖视图
-	logMode    bool               // 是否处于日志覆盖模式
+	// 日志视图
 	logEntries []proxy.LogEntry   // 累积的日志条目（截断到 maxLogEntries）
 	logLevel   string             // 当前订阅级别（debug/info/warning/error）
 	logActive  bool               // 日志流是否正在订阅
@@ -188,29 +158,11 @@ type model struct {
 
 	search     textinput.Model
 	searchMode bool
-	help       help.Model
+	helpMode   bool
 	keys       keyMap
 	statusLine string
 	lastError  error
 	rulesModal RulesModal
-}
-
-type settingAction int
-
-const (
-	settingCycleMode settingAction = iota
-	settingToggleSystemProxy
-	settingToggleAllowLan
-	settingToggleTun
-	settingRestart
-)
-
-type settingItem struct {
-	Label    string
-	Value    string // styled display value for UI rendering
-	RawValue bool   // plain bool for data comparison (toggle items only)
-	Hint     string
-	Action   settingAction
 }
 
 func newModel(client *proxy.Client, opts Options) model {
@@ -219,41 +171,26 @@ func newModel(client *proxy.Client, opts Options) model {
 	search.CharLimit = 64
 	search.Width = 28
 
+	t := theme.Current()
+	if opts.RulesModal != nil {
+		opts.RulesModal.SetTheme(t)
+	}
+
 	return model{
 		client:             client,
 		endpoint:           opts.Endpoint,
 		mixinConfigPath:    opts.MixinConfigPath,
 		restartCommand:     opts.RestartCommand,
 		systemProxyEnabled: opts.SystemProxyEnabled,
+		theme:              t,
 		focus:              focusGroups,
+		activeView:         viewProxies,
 		width:              120,
 		height:             32,
 		search:             search,
-		help: func() help.Model {
-			h := help.New()
-			h.Width = max(0, 120-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
-			return h
-		}(),
 		statusLine: T().StatusConnecting,
 		rulesModal: opts.RulesModal,
-		keys: keyMap{
-			Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", T().HelpMoveUp)),
-			Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", T().HelpMoveDown)),
-			Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", T().HelpFocusLeft)),
-			Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", T().HelpFocusRight)),
-			Tab:         key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", T().HelpSwitchPane)),
-			Select:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", T().HelpApplySelect)),
-			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", T().HelpRefreshDelay)),
-			Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", T().HelpSearch)),
-			Settings:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", T().HelpSettings)),
-			Mode:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", T().HelpCycleMode)),
-			SystemProxy: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", T().HelpToggleProxyPref)),
-			Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", T().HelpCloseBack)),
-			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", T().HelpQuit)),
-			Rules:       key.NewBinding(key.WithKeys("R"), key.WithHelp("R", T().RulesHelpOpen)),
-			TestGroup:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "test group")),
-			Logs:        key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logs")),
-		},
+		keys:       defaultKeyMap(),
 	}
 }
 
@@ -267,7 +204,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, msg.Width)
 		m.height = max(1, msg.Height)
 		m.search.Width = min(28, max(12, m.width/4))
-		m.help.Width = max(0, m.width-docStyle.GetHorizontalFrameSize()-headerStyle.GetHorizontalFrameSize())
 		m.rebuildGroups()
 		return m, nil
 	case tickMsg:
@@ -291,7 +227,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyTestGroupResult(msg)
 		return m, nil
 	case logEntryMsg:
-		// 累积日志并截断；若仍在 logMode 则继续订阅下一条
+		// 累积日志并截断；若仍在订阅则继续订阅下一条
 		m.logEntries = append(m.logEntries, msg.entry)
 		if len(m.logEntries) > maxLogEntries {
 			m.logEntries = m.logEntries[len(m.logEntries)-maxLogEntries:]
@@ -304,12 +240,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyState(msg.data)
 		m.statusLine = msg.status
 		m.lastError = nil
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case errMsg:
 		m.lastError = msg.err
 		m.statusLine = msg.err.Error()
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case configFlagsMsg:
 		m.systemProxyEnabled = msg.systemProxyEnabled
@@ -317,10 +253,75 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tunEnabled = msg.tunEnabled
 		m.statusLine = msg.status
 		m.lastError = nil
-		m.settingsMode = false
+		m.activeView = viewProxies
 		return m, nil
 	case tea.KeyMsg:
-		if m.rulesModal != nil && m.rulesModal.IsOpen() {
+		// ? 帮助浮层（最高优先级，输入态时不拦截）
+		if !m.searchMode && msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '?' {
+			m.helpMode = !m.helpMode
+			return m, nil
+		}
+
+		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
+		if !m.searchMode && m.activeView != viewConfig {
+			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
+				// 切离 viewLogs：停止订阅
+				if m.activeView == viewLogs && v != viewLogs && m.logCancel != nil {
+					m.logCancel()
+					m.logActive = false
+				}
+				// 切离 viewRules：关闭 rules modal
+				if m.activeView == viewRules && v != viewRules && m.rulesModal != nil {
+					m.rulesModal.Close()
+				}
+				m.activeView = v
+				m.statusLine = v.label()
+				// 切到 viewLogs：启动订阅
+				if v == viewLogs && !m.logActive {
+					m.logActive = true
+					if m.logLevel == "" {
+						m.logLevel = "info"
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					m.logCancel = cancel
+					m.logCtx = ctx
+					return m, tea.Batch(m.logsCmd(ctx))
+				}
+				// 切到 viewRules：打开 rules modal
+				if v == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
+					m.rulesModal.Open()
+				}
+				return m, nil
+			}
+			if key.Matches(msg, m.keys.Tab) {
+				next := m.activeView.next()
+				if m.activeView == viewLogs && next != viewLogs && m.logCancel != nil {
+					m.logCancel()
+					m.logActive = false
+				}
+				if m.activeView == viewRules && next != viewRules && m.rulesModal != nil {
+					m.rulesModal.Close()
+				}
+				m.activeView = next
+				m.statusLine = next.label()
+				if next == viewLogs && !m.logActive {
+					m.logActive = true
+					if m.logLevel == "" {
+						m.logLevel = "info"
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					m.logCancel = cancel
+					m.logCtx = ctx
+					return m, tea.Batch(m.logsCmd(ctx))
+				}
+				if next == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
+					m.rulesModal.Open()
+				}
+				return m, nil
+			}
+		}
+
+		if m.activeView == viewRules && m.rulesModal != nil && m.rulesModal.IsOpen() {
 			if m.rulesModal.Update(msg) {
 				return m, nil
 			}
@@ -347,8 +348,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// 日志覆盖模式：esc 退出、l 切级别，其它键交回主循环。
-		if m.logMode {
+		// 日志视图按键：esc 返回代理视图，l 切级别。
+		if m.activeView == viewLogs {
 			if handled, mm, mcmd := m.handleLogKey(msg); handled {
 				return mm, mcmd
 			}
@@ -363,10 +364,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case m.settingsMode:
+		case m.activeView == viewConfig:
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
-				m.settingsMode = false
+				m.activeView = viewProxies
 				m.statusLine = T().SettingsClosed
 				return m, nil
 			case key.Matches(msg, m.keys.Up):
@@ -389,27 +390,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
-		case key.Matches(msg, m.keys.Search):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Search):
 			m.searchMode = true
 			m.search.Focus()
 			m.statusLine = T().TypeToFilter
-			return m, nil
-		case key.Matches(msg, m.keys.Settings):
-			m.settingsMode = true
-			m.statusLine = T().SettingsOpenHint
 			return m, nil
 		case key.Matches(msg, m.keys.Mode):
 			return m, m.cycleModeCmd()
 		case key.Matches(msg, m.keys.SystemProxy):
 			return m, m.toggleSystemProxyCmd()
-		case key.Matches(msg, m.keys.Tab):
-			m.toggleFocus()
-			return m, nil
-		case key.Matches(msg, m.keys.Left):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Left):
 			m.moveFocus(-1)
 			return m, nil
-		case key.Matches(msg, m.keys.Right):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Right):
 			m.moveFocus(1)
+			return m, nil
+		case m.activeView == viewConnections && key.Matches(msg, m.keys.Up):
+			if len(m.connections.Connections) > 0 {
+				m.connIndex = (m.connIndex - 1 + len(m.connections.Connections)) % len(m.connections.Connections)
+			}
+			return m, nil
+		case m.activeView == viewConnections && key.Matches(msg, m.keys.Down):
+			if len(m.connections.Connections) > 0 {
+				m.connIndex = (m.connIndex + 1) % len(m.connections.Connections)
+			}
 			return m, nil
 		case key.Matches(msg, m.keys.Up):
 			m.move(-1)
@@ -419,25 +423,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.delayRefreshCmd()
-		case key.Matches(msg, m.keys.TestGroup):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.TestGroup):
 			return m, m.testGroupCmd()
-		case key.Matches(msg, m.keys.Logs):
-			m.logMode = true
-			m.logActive = true
-			if m.logLevel == "" {
-				m.logLevel = "info"
-			}
-			// 在 model 上创建 ctx+cancel，确保 cancel 存入返回的 m（避免值接收者丢失）
-			ctx, cancel := context.WithCancel(context.Background())
-			m.logCancel = cancel
-			m.logCtx = ctx
-			m.statusLine = T().LogOverlayHint
-			return m, m.logsCmd(ctx)
-		case key.Matches(msg, m.keys.Rules):
-			if m.rulesModal != nil && !m.rulesModal.IsOpen() {
-				m.rulesModal.Open()
-			}
-			return m, nil
 		case key.Matches(msg, m.keys.Select):
 			switch m.focus {
 			case focusGroups:
@@ -458,12 +445,8 @@ func (m model) View() string {
 		return T().Loading
 	}
 
-	if m.settingsMode {
-		return m.renderSettingsOverlay()
-	}
-
-	if m.logMode {
-		return m.renderLogOverlay()
+	if m.helpMode {
+		return m.renderHelpOverlay()
 	}
 
 	header := m.renderHeader()
@@ -503,10 +486,6 @@ func (m *model) applyTestGroupResult(msg testGroupResultMsg) {
 		break
 	}
 	m.statusLine = fmt.Sprintf(T().TestGroupDoneFmt, msg.groupName)
-}
-
-func (m *model) toggleFocus() {
-	m.moveFocus(1)
 }
 
 func (m *model) moveFocus(delta int) {
@@ -550,87 +529,6 @@ func (m *model) move(delta int) {
 		m.clampConnIndex()
 	}
 	m.clampIndices()
-}
-
-// clampConnIndex 限制连接选中行在有效范围。
-func (m *model) clampConnIndex() {
-	n := len(m.connections.Connections)
-	if n == 0 {
-		m.connIndex = 0
-		return
-	}
-	if m.connIndex < 0 {
-		m.connIndex = 0
-	}
-	if m.connIndex >= n {
-		m.connIndex = n - 1
-	}
-}
-
-func (m *model) rebuildGroups() {
-	currentGroup := ""
-	currentOption := ""
-	if group := m.currentGroup(); group != nil {
-		currentGroup = group.Name
-		if len(group.Options) > 0 && m.optionIndex < len(group.Options) {
-			currentOption = group.Options[m.optionIndex].Name
-		}
-	}
-	m.groups = BuildGroupViews(m.rawProxies, m.search.Value())
-	if currentGroup != "" {
-		for idx, group := range m.groups {
-			if group.Name == currentGroup {
-				m.groupIndex = idx
-				break
-			}
-		}
-	}
-	m.clampIndices()
-	if currentOption != "" {
-		if group := m.currentGroup(); group != nil {
-			for idx, option := range group.Options {
-				if option.Name == currentOption {
-					m.optionIndex = idx
-					break
-				}
-			}
-		}
-	}
-
-	// Update cached adaptive layout width for Groups panel
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
-	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
-	if columnContentWidth > 0 {
-		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
-	} else {
-		m.groupPanelWidth = 20 // fallback: matches minGroupsWidth in calcGroupsMinWidth
-	}
-}
-
-func (m *model) clampIndices() {
-	if len(m.groups) == 0 {
-		m.groupIndex = 0
-		m.optionIndex = 0
-		return
-	}
-	if m.groupIndex < 0 {
-		m.groupIndex = 0
-	}
-	if m.groupIndex >= len(m.groups) {
-		m.groupIndex = len(m.groups) - 1
-	}
-	options := m.groups[m.groupIndex].Options
-	if len(options) == 0 {
-		m.optionIndex = 0
-		return
-	}
-	if m.optionIndex < 0 {
-		m.optionIndex = 0
-	}
-	if m.optionIndex >= len(options) {
-		m.optionIndex = len(options) - 1
-	}
 }
 
 func (m model) refreshCmd() tea.Cmd {
@@ -756,25 +654,6 @@ func (m model) testGroupCmd() tea.Cmd {
 	}
 }
 
-// logsCmd 订阅 mihomo /logs 流，阻塞读一条返回 logEntryMsg。
-// ctx 由调用方创建并存入 model.logCancel，确保退出时可取消。
-// 持续流靠 Update 收到 logEntryMsg 后再次调度 logsCmd（复用同一 ctx，不新建流）。
-func (m model) logsCmd(ctx context.Context) tea.Cmd {
-	level := m.logLevel
-	if level == "" {
-		level = "info"
-	}
-	ch := m.client.Logs(ctx, level)
-
-	return func() tea.Msg {
-		entry, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return logEntryMsg{entry: entry}
-	}
-}
-
 func (m model) switchProxyCmd() tea.Cmd {
 	group := m.currentGroup()
 	if group == nil || len(group.Options) == 0 || m.optionIndex >= len(group.Options) {
@@ -800,511 +679,8 @@ func (m model) switchProxyCmd() tea.Cmd {
 	}
 }
 
-// handleLogKey 处理日志覆盖模式按键：esc/q 退出，l 循环切换级别。
-// 切换级别会清空已累积日志并重新订阅。
-func (m model) handleLogKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
-	// esc / q 退出
-	if msg.Type == tea.KeyEsc {
-		m.stopLogStream()
-		m.logMode = false
-		m.statusLine = T().LogOverlayClosed
-		return true, m, nil
-	}
-	if msg.Type == tea.KeyRunes && string(msg.Runes) == "q" {
-		m.stopLogStream()
-		m.logMode = false
-		m.statusLine = T().LogOverlayClosed
-		return true, m, nil
-	}
-	// l 切换级别
-	if msg.Type == tea.KeyRunes && string(msg.Runes) == "l" {
-		m.stopLogStream() // 停止旧流
-		m.logLevel = nextLogLevel(m.logLevel)
-		m.logEntries = nil
-		// 新建 ctx+cancel 存入 model
-		ctx, cancel := context.WithCancel(context.Background())
-		m.logCancel = cancel
-		m.logCtx = ctx
-		m.logActive = true
-		m.statusLine = fmt.Sprintf(T().LogLevelFmt, m.logLevel)
-		return true, m, m.logsCmd(ctx)
-	}
-	return false, m, nil
-}
-
-// stopLogStream 停止当前日志订阅并重置 active 标志。
-func (m *model) stopLogStream() {
-	m.logActive = false
-	if m.logCancel != nil {
-		m.logCancel()
-		m.logCancel = nil
-	}
-}
-
-// nextLogLevel 在 logLevels 中循环到下一个级别。
-func nextLogLevel(current string) string {
-	if current == "" {
-		current = "info"
-	}
-	for i, l := range logLevels {
-		if l == current {
-			if i+1 < len(logLevels) {
-				return logLevels[i+1]
-			}
-			return logLevels[0]
-		}
-	}
-	return logLevels[0]
-}
-
-// handleConnectionCloseKey 处理连接面板的 d/D 断连按键。
-// 返回 (handled, model, cmd)；handled=false 表示未处理，交回主 Update。
-// 交互：按 d/D 设待确认态并提示，再次按相同键确认执行，其它键取消。
-func (m model) handleConnectionCloseKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
-	if msg.Type != tea.KeyRunes {
-		return false, m, nil
-	}
-	runes := string(msg.Runes)
-	isClose := runes == "d"
-	isCloseAll := runes == "D"
-
-	// 已有待确认态
-	if m.connConfirmClose != "" {
-		// 再次按对应键确认
-		confirmMatch := (m.connConfirmClose == "all" && isCloseAll) ||
-			(m.connConfirmClose != "all" && isClose)
-		if confirmMatch {
-			target := m.connConfirmClose
-			m.connConfirmClose = ""
-			return true, m, m.closeConnectionCmd(target)
-		}
-		// 其它任意键取消
-		m.connConfirmClose = ""
-		m.statusLine = T().FocusConnections
-		return true, m, nil
-	}
-
-	// 首次按 d/D 进入待确认
-	if isCloseAll {
-		m.connConfirmClose = "all"
-		m.statusLine = T().ConnCloseAllLabel + " — press D again to confirm"
-		return true, m, nil
-	}
-	if isClose {
-		conns := m.connections.Connections
-		if len(conns) == 0 {
-			return true, m, nil
-		}
-		m.clampConnIndex()
-		target := conns[m.connIndex].ID
-		m.connConfirmClose = target
-		m.statusLine = target + " — press d again to confirm"
-		return true, m, nil
-	}
-	return false, m, nil
-}
-
-func (m model) closeConnectionCmd(target string) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-
-		var closeErr error
-		if target == "all" {
-			closeErr = m.client.CloseAllConnections(ctx)
-		} else {
-			closeErr = m.client.CloseConnection(ctx, target)
-		}
-		if closeErr != nil {
-			return errMsg{fmt.Errorf("close connection %s: %w", target, closeErr)}
-		}
-
-		state, err := m.fetchState(ctx)
-		if err != nil {
-			return errMsg{err}
-		}
-		label := target
-		if target == "all" {
-			label = T().ConnCloseAllLabel
-		}
-		return switchResultMsg{
-			status: fmt.Sprintf(T().ConnClosedFmt, label),
-			data:   state,
-		}
-	}
-}
-
-func (m model) cycleModeCmd() tea.Cmd {
-	next := nextMode(m.mode)
-	return func() tea.Msg {
-		persistErr := appconfig.WriteMode(m.mixinConfigPath, next)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-
-		liveErr := m.client.UpdateMode(ctx, next)
-		state, err := m.fetchState(ctx)
-		if err != nil {
-			if liveErr != nil {
-				return errMsg{fmt.Errorf("update mode failed: %v; refresh failed: %w", liveErr, err)}
-			}
-			return errMsg{err}
-		}
-
-		status := fmt.Sprintf(T().ModeToFmt, fallback(state.config.Mode, next))
-		switch {
-		case persistErr == nil && liveErr == nil:
-		case persistErr != nil && liveErr == nil:
-			status += fmt.Sprintf(T().ModeSaveFailedFmt, persistErr)
-		case persistErr == nil && liveErr != nil:
-			status = fmt.Sprintf(T().ModeApplyFailedFmt, next, liveErr)
-		default:
-			return errMsg{fmt.Errorf("save mode: %v; live apply: %v", persistErr, liveErr)}
-		}
-
-		return settingsResultMsg{status: status, data: state}
-	}
-}
-
-func (m model) toggleSystemProxyCmd() tea.Cmd {
-	next := !m.systemProxyEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteSystemProxyEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		sysEnabled, err := appconfig.ReadSystemProxyEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().SysProxyPrefFmt, boolLabel(next)),
-			systemProxyEnabled: sysEnabled,
-			allowLanEnabled:    m.allowLanEnabled,
-			tunEnabled:         m.tunEnabled,
-		}
-	}
-}
-
-func (m model) activateSettingCmd() tea.Cmd {
-	items := m.settingsItems()
-	if len(items) == 0 || m.settingsIndex >= len(items) {
-		return nil
-	}
-
-	switch items[m.settingsIndex].Action {
-	case settingCycleMode:
-		return m.cycleModeCmd()
-	case settingToggleSystemProxy:
-		return m.toggleSystemProxyCmd()
-	case settingToggleAllowLan:
-		return m.toggleAllowLanCmd()
-	case settingToggleTun:
-		return m.toggleTunCmd()
-	case settingRestart:
-		return m.restartRuntimeCmd()
-	default:
-		return nil
-	}
-}
-
-func (m model) toggleAllowLanCmd() tea.Cmd {
-	next := !m.allowLanEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteAllowLanEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		lanEnabled, err := appconfig.ReadAllowLanEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().AllowLanPrefFmt, boolLabel(next)),
-			systemProxyEnabled: m.systemProxyEnabled,
-			allowLanEnabled:    lanEnabled,
-			tunEnabled:         m.tunEnabled,
-		}
-	}
-}
-
-func (m model) toggleTunCmd() tea.Cmd {
-	next := !m.tunEnabled
-	return func() tea.Msg {
-		if err := appconfig.WriteTunEnabled(m.mixinConfigPath, next); err != nil {
-			return errMsg{err}
-		}
-		tunEnabled, err := appconfig.ReadTunEnabled(m.mixinConfigPath)
-		if err != nil {
-			return errMsg{err}
-		}
-		return configFlagsMsg{
-			status:             fmt.Sprintf(T().TunPrefFmt, boolLabel(next)),
-			systemProxyEnabled: m.systemProxyEnabled,
-			allowLanEnabled:    m.allowLanEnabled,
-			tunEnabled:         tunEnabled,
-		}
-	}
-}
-
-// validateRestartCommand rejects shell metacharacters that could enable
-// command injection through the user-supplied restart command. It allows
-// && (logical AND used for chaining source + command) but rejects
-// standalone & (background operator).
-func validateRestartCommand(cmd string) error {
-	for i := 0; i < len(cmd); i++ {
-		ch := cmd[i]
-		switch ch {
-		case ';', '|', '$', '`', '(', ')', '<', '>', '\n', '\r':
-			return fmt.Errorf(T().RestartValidateErrFmt, ch)
-		case '&':
-			// Allow && (shell AND) but reject standalone & (background)
-			if i+1 >= len(cmd) || cmd[i+1] != '&' {
-				return fmt.Errorf(T().RestartValidateErrFmt, ch)
-			}
-			i++ // skip second &
-		}
-	}
-	return nil
-}
-
-func (m model) restartRuntimeCmd() tea.Cmd {
-	if strings.TrimSpace(m.restartCommand) == "" {
-		return func() tea.Msg {
-			state, err := m.refreshSettingsOnly()
-			if err != nil {
-				return errMsg{err}
-			}
-			return settingsResultMsg{
-				status: T().RestartUnavailable,
-				data:   state,
-			}
-		}
-	}
-
-	if err := validateRestartCommand(m.restartCommand); err != nil {
-		return func() tea.Msg {
-			return errMsg{err}
-		}
-	}
-
-	return func() tea.Msg {
-		cmd := exec.Command("bash", "-lc", m.restartCommand)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			message := strings.TrimSpace(string(output))
-			if message != "" {
-				return errMsg{fmt.Errorf("restart failed: %w: %s", err, message)}
-			}
-			return errMsg{fmt.Errorf("restart failed: %w", err)}
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		state, refreshErr := m.fetchState(ctx)
-		if refreshErr != nil {
-			return errMsg{fmt.Errorf("restart succeeded but refresh failed: %w", refreshErr)}
-		}
-		return settingsResultMsg{status: T().RuntimeRestarted, data: state}
-	}
-}
-
-func (m model) refreshSettingsOnly() (refreshMsg, error) {
-	state := refreshMsg{
-		version:     proxy.Version{Version: m.version},
-		config:      proxy.Config{Mode: m.mode},
-		traffic:     proxy.Traffic{Up: m.up, Down: m.down},
-		proxies:     m.rawProxies,
-		connections: m.connections,
-	}
-	var err error
-	state.systemProxyEnabled, err = appconfig.ReadSystemProxyEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	state.allowLanEnabled, err = appconfig.ReadAllowLanEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	state.tunEnabled, err = appconfig.ReadTunEnabled(m.mixinConfigPath)
-	if err != nil {
-		return refreshMsg{}, err
-	}
-	return state, nil
-}
-
 func tickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
-}
-
-func (m model) currentGroup() *GroupView {
-	if len(m.groups) == 0 || m.groupIndex >= len(m.groups) {
-		return nil
-	}
-	return &m.groups[m.groupIndex]
-}
-
-var (
-	// ── Theme palette ──────────────────────────────────────────────────
-	// Primary: cool cyan-blue for identity & structure
-	colorPrimary = lipgloss.Color("39") // bright blue
-	// Accent: vivid teal for focus & active states
-	colorAccent = lipgloss.Color("86") // bright cyan-green
-	// Surface: background tints for selection & status
-	colorSurfaceHigh = lipgloss.Color("62") // deep indigo — selection bg
-	// Content: text hierarchy
-	colorTextPrimary   = lipgloss.Color("252") // near-white
-	colorTextSecondary = lipgloss.Color("246") // mid-gray
-	colorTextMuted     = lipgloss.Color("243") // dim gray
-	// Semantic: state & delay colors
-	colorSuccess = lipgloss.Color("42")  // green  — low delay / on
-	colorWarning = lipgloss.Color("220") // yellow — mid delay
-	colorInfo    = lipgloss.Color("117") // light blue — informational
-
-	// ── Structural styles ──────────────────────────────────────────────
-	// ── Layout constants ──────────────────────────────────────────────
-	columnGap = 2 // horizontal gap between Groups and Options panels
-
-	docStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-
-	headerStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(0, 1)
-
-	panelBaseStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1)
-
-	activePanelStyle   = panelBaseStyle.BorderForeground(colorAccent)
-	inactivePanelStyle = panelBaseStyle.BorderForeground(lipgloss.Color("237"))
-
-	// ── Typography ──────────────────────────────────────────────────────
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	subtitleStyle = lipgloss.NewStyle().Foreground(colorTextSecondary)
-
-	// ── Status & feedback ──────────────────────────────────────────────
-	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("230")).
-			Background(colorSurfaceHigh).
-			Padding(0, 1)
-	mutedStyle    = lipgloss.NewStyle().Foreground(colorTextMuted)
-	selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorTextPrimary).
-			Background(colorSurfaceHigh)
-	currentStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).
-			Bold(true)
-
-	// ── Semantic helpers ───────────────────────────────────────────────
-	onStyle  = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
-	offStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
-
-	// ── Layout helpers ─────────────────────────────────────────────────
-	fitLineStyle = lipgloss.NewStyle() // reused by fitLine to avoid per-call allocation
-)
-
-func (m model) renderHeader() string {
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	if docWidth <= 0 {
-		return ""
-	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	titleRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		titleStyle.Render(T().AppTitle),
-		"  ",
-		subtitleStyle.Render(T().PressSForSettings),
-	)
-
-	metaRow := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		statusPill(T().PillEndpoint, fallback(m.endpoint, "-")),
-		statusPill(T().PillMode, modeLabel(m.mode)),
-		statusPill(T().PillProxy, boolLabel(m.systemProxyEnabled)),
-		statusPill(T().PillLan, boolLabel(m.allowLanEnabled)),
-		statusPill(T().PillTun, boolLabel(m.tunEnabled)),
-		statusPill("↑", formatBytes(m.up)),
-		statusPill("↓", formatBytes(m.down)),
-		statusPill(T().PillFocus, m.focusLabel()),
-	)
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		fitLine(titleRow, innerWidth),
-		"",
-		fitLine(metaRow, innerWidth),
-	)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(content))
-}
-
-func statusPill(label, value string) string {
-	pill := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("237")).
-		Padding(0, 1)
-	return pill.Render(fmt.Sprintf("%s %s", mutedStyle.Render(label), value))
-}
-
-// calcGroupsMinWidth computes the optimal width for the Groups panel
-// based on actual group name lengths, with min/max boundaries.
-// It also considers the Options panel's minimum width (minOptionsWidth) and
-// the actual content width needed by the currently displayed options, ensuring
-// both panels have enough space.
-func (m model) calcGroupsMinWidth(columnContentWidth int) int {
-	const (
-		minGroupsWidth  = 20 // minimum usable width for Groups panel
-		minOptionsWidth = 30 // minimum usable width for Options panel
-		reservedPrefix  = 2  // "▸ " or "  "
-		rightPadding    = 2  // right-side padding for Groups panel content
-	)
-
-	if columnContentWidth <= minGroupsWidth+minOptionsWidth {
-		// Very narrow: give Groups at least minGroupsWidth (if possible) or half
-		return max(minGroupsWidth, columnContentWidth/2)
-	}
-
-	// Find the longest group row width needed
-	maxGroupRowWidth := 0
-	for _, group := range m.groups {
-		currentMarkLen := 0
-		if group.Current != "" {
-			currentMarkLen = ansi.StringWidth(" [" + group.Current + "]")
-		}
-		nameWidth := ansi.StringWidth(group.Name)
-		rowWidth := reservedPrefix + nameWidth + currentMarkLen + rightPadding
-		if rowWidth > maxGroupRowWidth {
-			maxGroupRowWidth = rowWidth
-		}
-	}
-
-	// No groups visible: fall back to reasonable default
-	if maxGroupRowWidth == 0 {
-		maxGroupRowWidth = minGroupsWidth
-	}
-
-	// Calculate the actual minimum width the Options panel needs
-	// based on the currently selected group's option content
-	optionsContentWidth := minOptionsWidth
-	if group := m.currentGroup(); group != nil {
-		for _, opt := range group.Options {
-			// Format: " ● name delay" — marker(1) + space(1) + name + space(1) + delay
-			optRowWidth := 1 + 1 + ansi.StringWidth(opt.Name) + 1 + ansi.StringWidth(plainDelayLabel(opt.DelayMS))
-			if optRowWidth > optionsContentWidth {
-				optionsContentWidth = optRowWidth
-			}
-		}
-	}
-
-	// Clamp: at least minGroupsWidth, and ensure Options gets enough space
-	maxAllowed := max(minGroupsWidth, columnContentWidth-optionsContentWidth)
-	if maxGroupRowWidth < minGroupsWidth {
-		maxGroupRowWidth = minGroupsWidth
-	} else if maxGroupRowWidth > maxAllowed {
-		maxGroupRowWidth = maxAllowed
-	}
-
-	return maxGroupRowWidth
 }
 
 func (m model) renderBody(availableHeight int) string {
@@ -1313,604 +689,24 @@ func (m model) renderBody(availableHeight int) string {
 		return docStyle.Width(docWidth).Render("")
 	}
 
-	const rowGap = 1
+	navWidth := 14 + panelBaseStyle(m.theme).GetHorizontalFrameSize()
+	nav := renderNav(m.theme, m.activeView, availableHeight)
+	contentWidth := max(0, docWidth-navWidth-1)
 
-	panelFrameWidth := panelBaseStyle.GetHorizontalFrameSize()
-	panelFrameHeight := panelBaseStyle.GetVerticalFrameSize()
-	minTopTotalHeight := panelFrameHeight + 2
-	minConnectionTotalHeight := panelFrameHeight + 2
-
-	topTotalHeight := availableHeight
-	connectionTotalHeight := 0
-	if availableHeight >= minTopTotalHeight+rowGap+minConnectionTotalHeight {
-		connectionTotalHeight = min(10, availableHeight/3)
-		if connectionTotalHeight < minConnectionTotalHeight {
-			connectionTotalHeight = minConnectionTotalHeight
-		}
-		candidateTopHeight := availableHeight - connectionTotalHeight - rowGap
-		if candidateTopHeight >= minTopTotalHeight {
-			topTotalHeight = candidateTopHeight
-		} else {
-			connectionTotalHeight = 0
-		}
-	}
-
-	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
-	if columnContentWidth < 0 {
-		columnContentWidth = 0
-	}
-
-	// Dynamic adaptive width: use cached Groups panel width, but never let the
-	// split exceed the terminal content area on very narrow screens.
-	leftWidth := min(max(0, m.groupPanelWidth), columnContentWidth)
-	middleWidth := max(0, columnContentWidth-leftWidth)
-	topContentHeight := max(0, topTotalHeight-panelFrameHeight)
-
-	top := lipgloss.NewStyle().MaxWidth(docWidth).MaxHeight(topTotalHeight).Render(
-		lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			m.renderGroupsPanel(leftWidth, topContentHeight),
-			strings.Repeat(" ", columnGap),
-			m.renderOptionsPanel(middleWidth, topContentHeight),
-		),
-	)
-	if connectionTotalHeight == 0 {
-		return docStyle.Width(docWidth).Render(top)
-	}
-
-	connectionContentWidth := max(0, docWidth-panelFrameWidth)
-	connectionContentHeight := max(0, connectionTotalHeight-panelFrameHeight)
-	connections := m.renderConnectionsPanel(connectionContentWidth, connectionContentHeight)
-	body := lipgloss.NewStyle().MaxWidth(docWidth).MaxHeight(availableHeight).Render(
-		lipgloss.JoinVertical(lipgloss.Left, top, "", connections),
-	)
-	return docStyle.Width(docWidth).Render(body)
-}
-
-func (m model) renderGroupsPanel(width, height int) string {
-	style := inactivePanelStyle
-	if m.focus == focusGroups {
-		style = activePanelStyle
-	}
-	content := renderPanelContent(
-		T().PanelGroups,
-		T().PanelGroupsHint,
-		m.visibleGroupRows(width, max(0, height)),
-		width,
-		height,
-	)
-	return renderPanel(style, width, height, content)
-}
-
-func (m model) renderOptionsPanel(width, height int) string {
-	style := inactivePanelStyle
-	if m.focus == focusOptions {
-		style = activePanelStyle
-	}
-	group := m.currentGroup()
-	title := T().PanelOptions
-	subtitle := T().SelectGroupFirst
-	if group != nil {
-		title = fmt.Sprintf(T().OptionsTitleFmt, group.Name)
-		subtitle = fmt.Sprintf(T().CurrentFmt, fallback(group.Current, "-"))
-	}
-	content := renderPanelContent(
-		title,
-		subtitle,
-		m.visibleOptionRows(width, max(0, height)),
-		width,
-		height,
-	)
-	return renderPanel(style, width, height, content)
-}
-
-// renderLogOverlay 渲染日志覆盖视图：显示最近 maxLogEntries 条日志，按级别着色。
-func (m model) renderLogOverlay() string {
-	width := max(1, m.width)
-	height := max(1, m.height)
-
-	header := fmt.Sprintf(T().LogOverlayTitle, m.logLevel)
-	body := lipgloss.JoinVertical(lipgloss.Left, header, "")
-	usedHeight := lipgloss.Height(body) + 2 // 标题+空行
-	avail := height - usedHeight
-	if avail < 1 {
-		avail = 1
-	}
-
-	// 取最近 avail 条
-	entries := m.logEntries
-	if len(entries) > avail {
-		entries = entries[len(entries)-avail:]
-	}
-
-	lines := make([]string, 0, len(entries))
-	for _, e := range entries {
-		lines = append(lines, fitLine(fmt.Sprintf("[%s] %s", e.Level, e.Payload), width))
-	}
-	if len(lines) == 0 {
-		lines = append(lines, fitLine(mutedStyle.Render(T().LogWaiting), width))
-	}
-
-	content := strings.Join(lines, "\n")
-	return lipgloss.JoinVertical(lipgloss.Left, header, "", content)
-}
-
-func (m model) renderSettingsOverlay() string {
-	contentWidth := 32
-	// padding(1,2)=4 + border(2)=2 → total extra 6
-	totalWidth := contentWidth + 6
-
-	modalStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 2).
-		Width(totalWidth)
-
-	title := titleStyle.Render(T().SettingsTitle)
-	subtitle := mutedStyle.Render(T().SettingsHint)
-
-	rows := m.visibleSettingRows(contentWidth, 5)
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		subtitle,
-		"",
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
-	)
-
-	modal := modalStyle.Render(content)
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
-}
-
-func (m model) renderConnectionsPanel(width, height int) string {
-	subtitle := fmt.Sprintf(T().ConnectionStatsFmt, len(m.connections.Connections), formatSize(m.connections.DownloadTotal), formatSize(m.connections.UploadTotal))
-	content := renderPanelContent(
-		T().PanelConnections,
-		subtitle,
-		m.visibleConnectionRows(width, max(0, height)),
-		width,
-		height,
-	)
-	return renderPanel(inactivePanelStyle, width, height, content)
-}
-
-func (m model) visibleGroupRows(width, limit int) []string {
-	if limit <= 0 || width <= 0 {
-		return nil
-	}
-	if len(m.groups) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoGroupsMatchFilter), width)}
-	}
-	start, end := window(m.groupIndex, len(m.groups), limit)
-	rows := make([]string, 0, end-start)
-
-	for idx := start; idx < end; idx++ {
-		group := m.groups[idx]
-		isSelected := idx == m.groupIndex
-
-		prefix := "  "
-		if isSelected {
-			prefix = "▸ "
-		}
-
-		currentMarkLen := 0
-		if group.Current != "" {
-			// " [Current]" = space + bracket + name + bracket, use visual width
-			currentMarkLen = ansi.StringWidth(" [" + group.Current + "]")
-		}
-
-		reservedPrefix := ansi.StringWidth(prefix) // "▸ " or "  " — both are 2 cols today, but self-documenting
-		nameWidth := width - reservedPrefix - currentMarkLen
-		if nameWidth < 4 {
-			nameWidth = 4
-		}
-
-		truncatedName := ansi.Truncate(group.Name, nameWidth, "…")
-
-		baseStyle := lipgloss.NewStyle()
-		if isSelected {
-			baseStyle = selectedStyle
-		} else if group.Current != "" {
-			baseStyle = currentStyle
-		}
-
-		currentMark := ""
-		if group.Current != "" {
-			bracketStyle := mutedStyle
-			curStyle := currentStyle
-			if isSelected {
-				bracketStyle = bracketStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
-				curStyle = curStyle.Inherit(selectedStyle).Foreground(colorAccent)
-			}
-			currentMark = baseStyle.Render(" ") + bracketStyle.Render("[") + curStyle.Render(group.Current) + bracketStyle.Render("]")
-		}
-
-		line := baseStyle.Render(prefix+truncatedName) + currentMark
-		rows = append(rows, fitStyledLine(line, width, baseStyle))
-	}
-	return rows
-}
-
-func (m model) visibleOptionRows(width, limit int) []string {
-	if limit <= 0 || width <= 0 {
-		return nil
-	}
-	group := m.currentGroup()
-	if group == nil || len(group.Options) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoSelectableNodes), width)}
-	}
-	start, end := window(m.optionIndex, len(group.Options), limit)
-	rows := make([]string, 0, end-start)
-	for idx := start; idx < end; idx++ {
-		option := group.Options[idx]
-		isSelected := idx == m.optionIndex
-
-		baseStyle := lipgloss.NewStyle()
-		if isSelected {
-			baseStyle = selectedStyle
-		}
-
-		var markerStyle lipgloss.Style
-		markerChar := "○"
-		if option.Selected {
-			markerStyle = lipgloss.NewStyle().Foreground(colorSuccess)
-			markerChar = "●"
-		} else {
-			markerStyle = mutedStyle
-		}
-		if isSelected {
-			markerStyle = markerStyle.Inherit(selectedStyle).Foreground(markerStyle.GetForeground())
-		}
-
-		delayStyle := getDelayStyle(option.DelayMS)
-		if isSelected {
-			delayStyle = delayStyle.Inherit(selectedStyle).Foreground(delayStyle.GetForeground())
-		}
-		delayStrPlain := plainDelayLabel(option.DelayMS)
-
-		reserved := 1 + 1 + 1 + 1 + ansi.StringWidth(delayStrPlain)
-		nameWidth := width - reserved
-		if nameWidth < 4 {
-			nameWidth = 4
-		}
-		truncatedName := ansi.Truncate(option.Name, nameWidth, "…")
-
-		line := baseStyle.Render(" ") +
-			markerStyle.Render(markerChar) +
-			baseStyle.Render(" "+truncatedName+" ") +
-			delayStyle.Render(delayStrPlain)
-
-		rows = append(rows, fitStyledLine(line, width, baseStyle))
-	}
-	return rows
-}
-
-func (m model) settingsItems() []settingItem {
-	restartHint := T().HintRestartShell
-	if strings.TrimSpace(m.restartCommand) != "" {
-		restartHint = T().HintRestartMixin
-	}
-	return []settingItem{
-		{Label: T().SettingLabelMode, Value: fallback(m.mode, "rule"), RawValue: false, Hint: T().HintCycle, Action: settingCycleMode},
-		{Label: T().SettingLabelSysProxy, Value: boolLabel(m.systemProxyEnabled), RawValue: m.systemProxyEnabled, Hint: T().HintNewShells, Action: settingToggleSystemProxy},
-		{Label: T().SettingLabelAllowLan, Value: boolLabel(m.allowLanEnabled), RawValue: m.allowLanEnabled, Hint: T().HintRestart, Action: settingToggleAllowLan},
-		{Label: T().SettingLabelTun, Value: boolLabel(m.tunEnabled), RawValue: m.tunEnabled, Hint: T().HintRestart, Action: settingToggleTun},
-		{Label: T().SettingLabelRestart, Value: "", RawValue: false, Hint: restartHint, Action: settingRestart},
-	}
-}
-
-func (m model) visibleSettingRows(width, limit int) []string {
-	if limit <= 0 || width <= 0 {
-		return nil
-	}
-	items := m.settingsItems()
-	if len(items) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoSettingsAvailable), width)}
-	}
-	start, end := window(m.settingsIndex, len(items), limit)
-	rows := make([]string, 0, end-start)
-	for idx := start; idx < end; idx++ {
-		item := items[idx]
-		isSelected := idx == m.settingsIndex
-		prefix := "  "
-		if isSelected {
-			prefix = "▸ "
-		}
-
-		baseStyle := lipgloss.NewStyle()
-		if isSelected {
-			baseStyle = selectedStyle
-		}
-
-		var valueStyle lipgloss.Style
-		var valueStrPlain string
-		switch item.Action {
-		case settingCycleMode:
-			valueStrPlain = strings.ToLower(strings.TrimSpace(item.Value))
-			valueStyle = getModeStyle(valueStrPlain)
-		case settingToggleSystemProxy, settingToggleAllowLan, settingToggleTun:
-			isOn := item.RawValue
-			valueStrPlain = T().BoolOff
-			valueStyle = offStyle
-			if isOn {
-				valueStrPlain = T().BoolOn
-				valueStyle = onStyle
-			}
-		case settingRestart:
-			valueStrPlain = T().ValueRestart
-			valueStyle = lipgloss.NewStyle().Foreground(colorInfo).Bold(true)
-		default:
-			valueStrPlain = item.Value
-			valueStyle = mutedStyle
-		}
-
-		if isSelected {
-			valueStyle = valueStyle.Inherit(selectedStyle).Foreground(valueStyle.GetForeground())
-		}
-
-		hintPart := ""
-		hintWidth := 0
-		if isSelected && item.Hint != "" {
-			hintPart = "  " + item.Hint
-			hintWidth = ansi.StringWidth(hintPart)
-		}
-
-		reserved := ansi.StringWidth(prefix) + 2 + ansi.StringWidth(valueStrPlain) + hintWidth
-		labelWidth := width - reserved
-		if labelWidth < 4 {
-			labelWidth = 4
-		}
-		truncatedLabel := ansi.Truncate(item.Label, labelWidth, "…")
-
-		line := baseStyle.Render(prefix+truncatedLabel+"  ") +
-			valueStyle.Render(valueStrPlain)
-
-		if hintPart != "" {
-			hintStyle := mutedStyle
-			if isSelected {
-				hintStyle = hintStyle.Inherit(selectedStyle).Foreground(colorTextMuted)
-			}
-			line += hintStyle.Render(hintPart)
-		}
-
-		rows = append(rows, fitStyledLine(line, width, baseStyle))
-	}
-	return rows
-}
-
-func (m model) visibleConnectionRows(width, limit int) []string {
-	if limit <= 0 || width <= 0 {
-		return nil
-	}
-	connections := m.connections.Connections
-	if len(connections) == 0 {
-		return []string{fitLine(mutedStyle.Render("  "+T().NoActiveConnections), width)}
-	}
-	if len(connections) > limit {
-		connections = connections[:limit]
-	}
-	rows := make([]string, 0, len(connections))
-	for _, conn := range connections {
-		line := fmt.Sprintf(" %s  %s  %s  ↓%s ↑%s", connectionTarget(conn), mutedStyle.Render(conn.Rule), strings.Join(conn.Chains, " → "), formatSize(conn.Download), formatSize(conn.Upload))
-		line = ansi.Truncate(line, width, "…")
-		rows = append(rows, fitLine(line, width))
-	}
-	return rows
-}
-
-func (m model) renderFooter() string {
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	if docWidth <= 0 {
-		return ""
-	}
-	innerWidth := max(0, docWidth-headerStyle.GetHorizontalFrameSize())
-	helpView := fitLine(mutedStyle.Render(m.help.View(m.keys)), innerWidth)
-	left := statusStyle.Render(fallback(m.statusLine, T().StatusReady))
-	if m.searchMode {
-		left = lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", titleStyle.Render(T().SearchLabel), m.search.View())
-	}
-	row := lipgloss.JoinVertical(lipgloss.Left, fitLine(left, innerWidth), helpView)
-	return docStyle.Width(docWidth).Render(headerStyle.Width(innerWidth).MaxWidth(docWidth).Render(row))
-}
-
-func fitLine(line string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	return fitLineStyle.MaxWidth(width).Render(line)
-}
-
-func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
-	if width <= 0 {
-		return ""
-	}
-	line = ansi.Truncate(line, width, "…")
-	if visLen := ansi.StringWidth(line); visLen < width {
-		line += padStyle.Render(strings.Repeat(" ", width-visLen))
-	}
-	return line
-}
-
-func renderPanelContent(title, subtitle string, rows []string, width, height int) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-
-	lines := make([]string, 0, height)
-	lines = append(lines, fitLine(titleStyle.Render(ansi.Truncate(title, width, "…")), width))
-	if height >= 2 && strings.TrimSpace(subtitle) != "" {
-		lines = append(lines, fitLine(subtitleStyle.Render(ansi.Truncate(subtitle, width, "…")), width))
-	}
-
-	remaining := height - len(lines)
-	if remaining > 0 && len(rows) > 0 {
-		if remaining > len(rows) {
-			remaining = len(rows)
-		}
-		lines = append(lines, rows[:remaining]...)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines...)
-}
-
-func renderPanel(style lipgloss.Style, width, height int, content string) string {
-	if width < 0 {
-		width = 0
-	}
-	if height < 0 {
-		height = 0
-	}
-	return style.
-		Width(width).
-		Height(height).
-		MaxWidth(width).
-		MaxHeight(height).
-		Render(content)
-}
-
-func plainDelayLabel(ms int) string {
-	if ms == -1 {
-		return "timeout"
-	}
-	if ms <= 0 {
-		return "--"
-	}
-	return fmt.Sprintf("%dms", ms)
-}
-
-func fallback(value, alt string) string {
-	if strings.TrimSpace(value) == "" {
-		return alt
-	}
-	return value
-}
-
-func truncate(value string, width int) string {
-	return ansi.Truncate(value, width, "…")
-}
-
-func getDelayStyle(ms int) lipgloss.Style {
-	if ms <= 0 {
-		return mutedStyle
-	}
-	switch {
-	case ms < 150:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	case ms < 300:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	var rest string
+	switch m.activeView {
+	case viewProxies:
+		rest = m.renderProxiesView(contentWidth, availableHeight)
+	case viewConnections:
+		rest = m.renderConnectionsView(contentWidth, availableHeight)
+	case viewLogs:
+		rest = m.renderLogsView(contentWidth, availableHeight)
+	case viewRules:
+		rest = m.renderRulesView(contentWidth, availableHeight)
+	case viewConfig:
+		rest = m.renderConfigView(contentWidth, availableHeight)
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		rest = m.renderProxiesView(contentWidth, availableHeight)
 	}
-}
-
-func delayLabel(ms int) string {
-	if ms <= 0 {
-		return mutedStyle.Render("--")
-	}
-	return getDelayStyle(ms).Render(fmt.Sprintf("%dms", ms))
-}
-
-func window(selected, total, limit int) (int, int) {
-	if total <= limit {
-		return 0, total
-	}
-	start := selected - limit/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + limit
-	if end > total {
-		end = total
-		start = end - limit
-	}
-	return start, end
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func boolLabel(value bool) string {
-	if value {
-		return onStyle.Render(T().BoolOn)
-	}
-	return offStyle.Render(T().BoolOff)
-}
-
-func getModeStyle(mode string) lipgloss.Style {
-	switch mode {
-	case "rule":
-		return lipgloss.NewStyle().Foreground(colorSuccess)
-	case "global":
-		return lipgloss.NewStyle().Foreground(colorWarning)
-	case "direct":
-		return lipgloss.NewStyle().Foreground(colorInfo)
-	default:
-		return mutedStyle
-	}
-}
-
-func modeLabel(mode string) string {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode != "rule" && mode != "global" && mode != "direct" {
-		mode = fallback(mode, "unknown")
-	}
-	return getModeStyle(mode).Render(mode)
-}
-
-func nextMode(current string) string {
-	switch strings.ToLower(strings.TrimSpace(current)) {
-	case "global":
-		return "direct"
-	case "direct":
-		return "rule"
-	default:
-		return "global"
-	}
-}
-
-func connectionTarget(conn proxy.Connection) string {
-	if host := strings.TrimSpace(conn.Metadata.Host); host != "" {
-		return host
-	}
-	if destination := strings.TrimSpace(conn.Metadata.Destination); destination != "" {
-		return destination
-	}
-	return conn.ID
-}
-
-func (m model) focusLabel() string {
-	switch m.focus {
-	case focusGroups:
-		return T().FocusGroupsLabel
-	default:
-		return T().FocusOptionsLabel
-	}
-}
-
-func formatBytes(value int64) string {
-	units := []string{"B/s", "KB/s", "MB/s", "GB/s"}
-	size := float64(value)
-	unit := 0
-	for size >= 1024 && unit < len(units)-1 {
-		size /= 1024
-		unit++
-	}
-	return fmt.Sprintf("%.1f%s", size, units[unit])
-}
-
-func formatSize(value int64) string {
-	units := []string{"B", "KB", "MB", "GB"}
-	size := float64(value)
-	unit := 0
-	for size >= 1024 && unit < len(units)-1 {
-		size /= 1024
-		unit++
-	}
-	return fmt.Sprintf("%.1f%s", size, units[unit])
+	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
 }

@@ -59,9 +59,10 @@ build/
 *.tar.gz
 *.zip
 *.7z
-!resources/zip/*.tar.xz
-!resources/zip/*.gz
-!resources/zip/*.zip
+!resources/zip/mihomo-*.gz
+!resources/zip/subconverter_*.tar.gz
+!resources/zip/yq_*.tar.gz
+!resources/zip/zashboard.zip
 
 # Environment files
 .env
@@ -71,20 +72,12 @@ build/
 
 # AI assistant work directories and context files
 .codebuddy/
-.claude/*
-!.claude/settings.json
-!.claude/skills/
-!.claude/skills/**
-!.claude/agents/
-!.claude/agents/**
-!.claude/rules/
-!.claude/rules/**
-!.claude/commands/
-!.claude/commands/**
+.claude/
 CLAUDE.md
 CODEBUDDY.md
 .mcp.json
 .superpowers/
+gan-harness/
 
 # rules backups
 mixin.yaml.bak.*

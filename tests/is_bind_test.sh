@@ -25,9 +25,27 @@ fail() {
 _start_listener() {
     local port
     if command -v python3 >/dev/null 2>&1; then
-        port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(1); print(s.getsockname()[1])' 2>/dev/null) || return 1
-        # 后台持有监听
-        python3 -c "import socket,sys,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',${port})); s.listen(1); time.sleep(30)" >/dev/null 2>&1 &
+        # 单进程后台：bind 0 让 OS 分配端口并持续持有监听 30s，
+        # 端口经临时文件回传（命令替换会阻塞到进程结束，故不能直接捕获 stdout）。
+        # 避免「先 bind 拿端口再关 socket、第二个进程重新 bind 同端口」的竞态。
+        local port_file="$TEST_TMPDIR/listener_port"
+        : > "$port_file"
+        python3 -c "import socket,sys,time
+s=socket.socket()
+s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(('127.0.0.1',0))
+s.listen(1)
+open('$port_file','w').write(str(s.getsockname()[1]))
+time.sleep(30)" >/dev/null 2>&1 &
+        # 等端口写入
+        local i
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            [ -s "$port_file" ] && break
+            sleep 0.2
+        done
+        [ -s "$port_file" ] || return 1
+        port=$(cat "$port_file")
+        [ -n "$port" ] || return 1
         echo "$port"
         return 0
     fi

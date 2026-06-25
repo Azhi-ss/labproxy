@@ -14,6 +14,15 @@ type Dict struct {
 	AppTitle          string
 	PressSForSettings string
 
+		AppSubtitle string // 顶部副标题
+		HelpTitle   string
+	// Nav bar (viewID labels)
+	NavProxies     string
+	NavConnections string
+	NavLogs        string
+	NavRules       string
+	NavConfig      string
+
 	// Status pills
 	PillEndpoint string
 	PillMode     string
@@ -129,7 +138,16 @@ var currentLang = LangEn
 var dicts = map[Language]Dict{
 	LangEn: {
 		AppTitle:          "LabProxy",
-		PressSForSettings: "press s for settings",
+		PressSForSettings: "press 5 for config",
+
+		AppSubtitle:    "labproxy",
+		HelpTitle:      "Keybindings",
+
+		NavProxies:     "Proxies",
+		NavConnections: "Connections",
+		NavLogs:        "Logs",
+		NavRules:       "Rules",
+		NavConfig:      "Config",
 
 		PillEndpoint: "endpoint",
 		PillMode:     "mode",
@@ -231,7 +249,16 @@ var dicts = map[Language]Dict{
 	},
 	LangZh: {
 		AppTitle:          "LabProxy",
-		PressSForSettings: "\u6309 s \u6253\u5f00\u8bbe\u7f6e",
+		PressSForSettings: "\u6309 5 \u6253\u5f00\u914d\u7f6e",
+
+		AppSubtitle:    "labproxy",
+		HelpTitle:      "\u5feb\u6377\u952e",
+
+		NavProxies:     "\u4ee3\u7406",
+		NavConnections: "\u8fde\u63a5",
+		NavLogs:        "\u65e5\u5fd7",
+		NavRules:       "\u89c4\u5219",
+		NavConfig:      "\u914d\u7f6e",
 
 		PillEndpoint: "\u7aef\u70b9",
 		PillMode:     "\u6a21\u5f0f",

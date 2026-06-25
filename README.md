@@ -182,21 +182,18 @@ labproxy tui
 ```
 
 **Hotkeys**
-| Key | Action |
-|-----|------|
-| `↑/↓` or `j/k` | navigate |
-| `Tab` / `←/→` | switch panels (Groups / Options / Connections) |
-| `Enter` | apply / select |
-| `d` / `D` | close current connection / close all (Connections panel, confirm twice) |
-| `T` | batch delay test for current group |
-| `L` | live log overlay (`l` to change level, `esc` to exit) |
-| `R` | rules management modal |
-| `s` | focus Settings |
-| `m` | switch proxy mode |
-| `p` | toggle system proxy |
-| `r` | refresh delay |
-| `/` | search |
-| `q` | quit |
+
+The TUI uses a Clash-style left nav with five persistent views:
+
+| Key | View | Actions |
+|-----|------|---------|
+| `1` | Proxies | `/` search, `t` test, `h/l` focus, `j/k` move, `Enter` switch |
+| `2` | Connections | `j/k` move, `d` close, `D` close all |
+| `3` | Logs | `/` filter, `l` level |
+| `4` | Rules | `a` add, `Enter` edit, `d` delete |
+| `5` | Config | `j/k` move, `Enter` toggle |
+
+Global: `1-5` switch view, `Tab` cycle, `r` refresh, `?` help, `q` quit.
 
 > **Maintainer note**: after changing TUI source code, run `VERSION=dev bash scripts/build-tui.sh` to regenerate prebuilt archives.
 
