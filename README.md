@@ -150,6 +150,37 @@ $ labproxy test GLOBAL --json
 
 ## Rules Management
 
+### AI and media rule workflow
+
+The workflow commands help test and apply a cautious first batch of external rule providers for AI/developer and media traffic.
+
+```bash
+labproxy rules workflow candidates
+labproxy rules workflow inspect
+labproxy rules workflow fetch --candidates=github,openai
+labproxy rules workflow validate --endpoint=http://127.0.0.1:9090 --candidates=github,openai
+labproxy rules workflow plan --candidates=github,openai
+labproxy rules workflow apply --endpoint=http://127.0.0.1:9090 --candidates=github,openai
+labproxy rules workflow verify --endpoint=http://127.0.0.1:9090 --reload-config=/Users/azhi/.labproxy/runtime.yaml
+labproxy rules workflow rollback --backup=/path/to/mixin.yaml.bak.20260702-120000
+```
+
+The first batch maps providers to existing strategy groups:
+
+```text
+github -> Proxies
+openai -> OpenAI
+anthropic -> OpenAI
+youtube -> YouTube
+netflix -> Netflix
+disney -> Disney
+telegram -> Telegram
+```
+
+Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`.
+
+Hugging Face stays as inline local rules for now because the previously proposed blackmatrix7 HuggingFace provider URL currently returns 404.
+
 ```bash
 # Open the rules manager modal by pressing R inside the TUI
 labproxy tui  # press R
