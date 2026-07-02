@@ -73,3 +73,54 @@ func TestRenderPlanIncludesProviderAndRuleSetDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPlanUsesCandidateNames(t *testing.T) {
+	plan := Plan{
+		Candidates: []Candidate{
+			{
+				Name:        "candidate-alias",
+				Description: "Candidate with a distinct provider identity",
+				SourceURL:   "https://example.test/candidate.yaml",
+				TargetGroup: "OpenAI",
+				Provider: rules.Provider{
+					Name:     "provider-name",
+					Type:     "http",
+					Behavior: "classical",
+					URL:      "https://example.test/provider.yaml",
+					Path:     "./rule-providers/provider.yaml",
+					Interval: 86400,
+				},
+			},
+		},
+		Providers: []rules.Provider{
+			{
+				Name:     "provider-name",
+				Type:     "http",
+				Behavior: "classical",
+				URL:      "https://example.test/provider.yaml",
+				Path:     "./rule-providers/provider.yaml",
+				Interval: 86400,
+			},
+		},
+		Rules: []rules.Rule{
+			{
+				Type:    rules.TypeRuleSet,
+				Payload: "provider-name",
+				Proxy:   "OpenAI",
+				Enabled: true,
+			},
+		},
+	}
+
+	text := RenderPlan(plan)
+	for _, want := range []string{
+		"candidate-alias",
+		"provider-name",
+		"behavior=classical",
+		"RULE-SET,provider-name,OpenAI",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("RenderPlan() missing %q in %q", want, text)
+		}
+	}
+}

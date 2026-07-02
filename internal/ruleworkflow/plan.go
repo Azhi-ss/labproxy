@@ -31,6 +31,18 @@ func RenderPlan(plan Plan) string {
 	var builder strings.Builder
 
 	builder.WriteString("Rule workflow plan\n")
+	builder.WriteString("Candidates:\n")
+	for _, candidate := range plan.Candidates {
+		fmt.Fprintf(
+			&builder,
+			"- %s target=%s source=%s provider=%s\n",
+			candidate.Name,
+			candidate.TargetGroup,
+			candidate.SourceURL,
+			candidate.Provider.Name,
+		)
+	}
+
 	builder.WriteString("Providers:\n")
 	for _, provider := range plan.Providers {
 		fmt.Fprintf(
