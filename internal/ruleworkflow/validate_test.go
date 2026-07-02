@@ -58,13 +58,13 @@ func TestValidateSourcesRejectsBehaviorMismatches(t *testing.T) {
 			name:      "domain rejects ipcidr",
 			behavior:  "domain",
 			ruleLine:  "IP-CIDR,1.1.1.0/24",
-			targetErr: "does not support rule type",
+			targetErr: "expected bare domain payload",
 		},
 		{
 			name:      "ipcidr rejects domain",
 			behavior:  "ipcidr",
 			ruleLine:  "DOMAIN-SUFFIX,github.com",
-			targetErr: "does not support rule type",
+			targetErr: "expected bare CIDR payload",
 		},
 	}
 
@@ -80,6 +80,54 @@ func TestValidateSourcesRejectsBehaviorMismatches(t *testing.T) {
 				t.Fatalf("ValidateSources error = %v, want substring %q", err, tc.targetErr)
 			}
 		})
+	}
+}
+
+func TestValidateSourcesRejectsNativeBehaviorTypedLines(t *testing.T) {
+	tests := []struct {
+		name      string
+		behavior  string
+		ruleLine  string
+		targetErr string
+	}{
+		{
+			name:      "domain rejects typed line",
+			behavior:  "domain",
+			ruleLine:  "DOMAIN-SUFFIX,github.com",
+			targetErr: "expected bare domain payload",
+		},
+		{
+			name:      "ipcidr rejects typed line",
+			behavior:  "ipcidr",
+			ruleLine:  "IP-CIDR,1.1.1.0/24",
+			targetErr: "expected bare CIDR payload",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			src := FetchedSource{
+				Candidate: candidate("provider-"+tc.behavior, "Provider "+tc.behavior, "https://example.test/provider.yaml", "Proxies", tc.behavior, "./rule-providers/provider.yaml"),
+				Data:      []byte("payload:\n  - " + tc.ruleLine + "\n"),
+			}
+
+			_, err := ValidateSources([]FetchedSource{src}, map[string]bool{"Proxies": true})
+			if err == nil || !strings.Contains(err.Error(), tc.targetErr) {
+				t.Fatalf("ValidateSources error = %v, want substring %q", err, tc.targetErr)
+			}
+		})
+	}
+}
+
+func TestValidateSourcesRejectsInvalidNativeIPCIDR(t *testing.T) {
+	src := FetchedSource{
+		Candidate: candidate("ips", "IPs", "https://example.test/ips.yaml", "Streaming", "ipcidr", "./rule-providers/ips.yaml"),
+		Data:      []byte("payload:\n  - 2001:db8::/129\n"),
+	}
+
+	_, err := ValidateSources([]FetchedSource{src}, map[string]bool{"Streaming": true})
+	if err == nil || !strings.Contains(err.Error(), "invalid ipcidr provider rule") {
+		t.Fatalf("ValidateSources error = %v, want invalid ipcidr provider rule", err)
 	}
 }
 
@@ -101,17 +149,17 @@ func TestValidateSourcesSuccess(t *testing.T) {
 			Candidate: candidate("domains", "Domains", "https://example.test/domains.yaml", "Proxies", "domain", "./rule-providers/domains.yaml"),
 			Data: []byte(`
 payload:
-  - DOMAIN,github.com
-  - DOMAIN-SUFFIX,githubusercontent.com
-  - DOMAIN-KEYWORD,gitlab
+  - '.blogger.com'
+  - '*.*.microsoft.com'
+  - books.itunes.apple.com
 `),
 		},
 		{
 			Candidate: candidate("ips", "IPs", "https://example.test/ips.yaml", "Streaming", "ipcidr", "./rule-providers/ips.yaml"),
 			Data: []byte(`
 payload:
-  - IP-CIDR,1.1.1.0/24
-  - IP-CIDR6,2001:db8::/32
+  - 1.1.1.0/24
+  - 2001:db8::/32
 `),
 		},
 		{
@@ -146,5 +194,8 @@ payload:
 	}
 	if results[0].Rules[0].Type != "DOMAIN" {
 		t.Fatalf("unexpected parsed rules: %+v", results[0].Rules)
+	}
+	if results[1].Rules[1].Type != "IP-CIDR6" {
+		t.Fatalf("unexpected parsed ip rules: %+v", results[1].Rules)
 	}
 }

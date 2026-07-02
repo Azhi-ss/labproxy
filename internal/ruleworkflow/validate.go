@@ -2,6 +2,7 @@ package ruleworkflow
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"labproxy/internal/rules"
@@ -32,7 +33,7 @@ func ValidateSources(sources []FetchedSource, strategyGroups map[string]bool) ([
 			return nil, fmt.Errorf("candidate %q provider invalid: %w", src.Candidate.Name, err)
 		}
 
-		parsedRules, err := ParseProviderRules(src.Data)
+		parsedRules, err := ParseProviderRulesForBehavior(src.Data, provider.Behavior)
 		if err != nil {
 			return nil, fmt.Errorf("candidate %q parse failed: %w", src.Candidate.Name, err)
 		}
@@ -70,11 +71,23 @@ func validateRuleBehavior(rule ProviderRule, behavior string) error {
 	case "domain":
 		switch rules.RuleType(ruleType) {
 		case rules.TypeDomain, rules.TypeDomainSuffix, rules.TypeDomainKeyword:
+			if strings.TrimSpace(rule.Payload) == "" {
+				return fmt.Errorf("domain rule payload is empty")
+			}
+			if strings.Contains(rule.Payload, ",") {
+				return fmt.Errorf("domain providers require bare payload entries")
+			}
 			return nil
 		}
 	case "ipcidr":
 		switch rules.RuleType(ruleType) {
 		case rules.TypeIPCIDR, rules.TypeIPCIDR6:
+			if strings.Contains(rule.Payload, ",") {
+				return fmt.Errorf("ipcidr providers require bare CIDR entries")
+			}
+			if _, err := netip.ParsePrefix(strings.TrimSpace(rule.Payload)); err != nil {
+				return fmt.Errorf("invalid CIDR %q: %w", rule.Payload, err)
+			}
 			return nil
 		}
 	default:

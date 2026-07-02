@@ -2,9 +2,11 @@ package ruleworkflow
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+	"labproxy/internal/rules"
 )
 
 type ProviderRule struct {
@@ -14,32 +16,52 @@ type ProviderRule struct {
 }
 
 func ParseProviderRules(data []byte) ([]ProviderRule, error) {
+	lines, err := providerRuleLines(data)
+	if err != nil {
+		return nil, err
+	}
+	return parseClassicalRuleLines(lines)
+}
+
+func ParseProviderRulesForBehavior(data []byte, behavior string) ([]ProviderRule, error) {
+	lines, err := providerRuleLines(data)
+	if err != nil {
+		return nil, err
+	}
+
+	switch behavior {
+	case "classical":
+		return parseClassicalRuleLines(lines)
+	case "domain":
+		return parseDomainRuleLines(lines)
+	case "ipcidr":
+		return parseIPCIDRRuleLines(lines)
+	default:
+		return nil, fmt.Errorf("unsupported provider behavior %q", behavior)
+	}
+}
+
+func providerRuleLines(data []byte) ([]string, error) {
 	var withPayload struct {
 		Payload []string `yaml:"payload"`
 	}
 	if err := yaml.Unmarshal(data, &withPayload); err == nil && len(withPayload.Payload) > 0 {
-		return parseRuleLines(withPayload.Payload)
+		return withPayload.Payload, nil
 	}
 
 	var list []string
 	if err := yaml.Unmarshal(data, &list); err == nil && len(list) > 0 {
-		return parseRuleLines(list)
+		return list, nil
 	}
 
-	return parseRuleLines(strings.Split(string(data), "\n"))
+	return strings.Split(string(data), "\n"), nil
 }
 
-func parseRuleLines(lines []string) ([]ProviderRule, error) {
+func parseClassicalRuleLines(lines []string) ([]ProviderRule, error) {
 	out := make([]ProviderRule, 0, len(lines))
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
+		line = normalizeProviderRuleLine(line)
 		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		line = strings.TrimPrefix(line, "- ")
-		line = strings.TrimSpace(line)
-		if line == "" {
 			continue
 		}
 
@@ -55,4 +77,61 @@ func parseRuleLines(lines []string) ([]ProviderRule, error) {
 		})
 	}
 	return out, nil
+}
+
+func parseDomainRuleLines(lines []string) ([]ProviderRule, error) {
+	out := make([]ProviderRule, 0, len(lines))
+	for _, line := range lines {
+		line = normalizeProviderRuleLine(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.Contains(line, ",") {
+			return nil, fmt.Errorf("invalid domain provider rule %q: expected bare domain payload", line)
+		}
+
+		out = append(out, ProviderRule{
+			// Mihomo domain providers carry bare payload entries, so the
+			// provider behavior rather than the line format defines semantics.
+			Type:    string(rules.TypeDomain),
+			Payload: line,
+			Raw:     line,
+		})
+	}
+	return out, nil
+}
+
+func parseIPCIDRRuleLines(lines []string) ([]ProviderRule, error) {
+	out := make([]ProviderRule, 0, len(lines))
+	for _, line := range lines {
+		line = normalizeProviderRuleLine(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.Contains(line, ",") {
+			return nil, fmt.Errorf("invalid ipcidr provider rule %q: expected bare CIDR payload", line)
+		}
+		prefix, err := netip.ParsePrefix(line)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ipcidr provider rule %q: %w", line, err)
+		}
+
+		ruleType := rules.TypeIPCIDR
+		if prefix.Addr().Is6() {
+			ruleType = rules.TypeIPCIDR6
+		}
+
+		out = append(out, ProviderRule{
+			Type:    string(ruleType),
+			Payload: line,
+			Raw:     line,
+		})
+	}
+	return out, nil
+}
+
+func normalizeProviderRuleLine(line string) string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "- ")
+	return strings.TrimSpace(line)
 }
