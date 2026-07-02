@@ -56,7 +56,7 @@ AI and developer tools:
 - OpenAI / ChatGPT
 - Anthropic / Claude
 - GitHub and GitHub asset hosts
-- Hugging Face
+- Hugging Face remains covered by existing local inline rules until a dedicated provider source is verified.
 
 Media and common services:
 
@@ -99,14 +99,13 @@ Initial provider names and target groups:
 github       -> Proxies
 openai       -> OpenAI
 anthropic    -> OpenAI
-huggingface  -> US
 youtube      -> YouTube
 netflix      -> Netflix
 disney       -> Disney
 telegram     -> Telegram
 ```
 
-`hf-mirror.com` remains a direct local override and must stay above imported Hugging Face rules.
+Hugging Face is intentionally not imported as a first-batch provider after live URL validation on 2026-07-02: the proposed blackmatrix7 HuggingFace Clash source returned 404. Keep `DOMAIN-SUFFIX,huggingface.co,US` and `DOMAIN-SUFFIX,hf-mirror.com,DIRECT` as direct local overrides for now.
 
 ## Workflow
 
