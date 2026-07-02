@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -854,5 +855,70 @@ func TestDNSQuery_EmptyName(t *testing.T) {
 	_, err := client.DNSQuery(context.Background(), "", "A")
 	if err == nil {
 		t.Fatal("expected error for empty name")
+	}
+}
+
+func TestClientReloadConfig(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotQuery string
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(data, &gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	err := client.ReloadConfig(context.Background(), "/tmp/runtime.yaml")
+	if err != nil {
+		t.Fatalf("ReloadConfig: %v", err)
+	}
+	if gotMethod != http.MethodPut || gotPath != "/configs" || gotQuery != "force=true" {
+		t.Fatalf("request = %s %s?%s", gotMethod, gotPath, gotQuery)
+	}
+	if gotBody["path"] != "/tmp/runtime.yaml" {
+		t.Fatalf("body path = %q", gotBody["path"])
+	}
+}
+
+func TestClientReloadConfigAcceptsSuccessStatuses(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusNotModified} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			client := NewClient(srv.URL, "")
+			if err := client.ReloadConfig(context.Background(), "/tmp/runtime.yaml"); err != nil {
+				t.Fatalf("ReloadConfig status %d: %v", status, err)
+			}
+		})
+	}
+}
+
+func TestClientReloadConfigReturnsStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("bad config path"))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	err := client.ReloadConfig(context.Background(), "/tmp/runtime.yaml")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "reload config failed") || !strings.Contains(err.Error(), "bad config path") {
+		t.Fatalf("error = %v, want reload failure with response body", err)
 	}
 }

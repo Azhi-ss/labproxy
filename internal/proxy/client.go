@@ -309,6 +309,38 @@ func (c *Client) UpdateMode(ctx context.Context, mode string) error {
 	return nil
 }
 
+func (c *Client) ReloadConfig(ctx context.Context, configPath string) error {
+	payload, err := json.Marshal(map[string]string{"path": configPath})
+	if err != nil {
+		return fmt.Errorf("marshal reload payload: %w", err)
+	}
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint.Path = path.Join(endpoint.Path, "/configs")
+	q := endpoint.Query()
+	q.Set("force", "true")
+	endpoint.RawQuery = q.Encode()
+
+	req, err := c.newRequest(ctx, http.MethodPut, endpoint.String(), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotModified {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("reload config failed: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 // CloseConnection 关闭指定连接。对应 mihomo DELETE /connections/:id。
 // id 为空时直接返回错误，避免误删全部连接。
 func (c *Client) CloseConnection(ctx context.Context, id string) error {
