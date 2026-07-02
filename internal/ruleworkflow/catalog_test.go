@@ -5,9 +5,6 @@ import "testing"
 func TestDefaultCandidatesContainFirstBatch(t *testing.T) {
 	candidates := DefaultCandidates()
 	got := map[string]Candidate{}
-	for _, c := range candidates {
-		got[c.Name] = c
-	}
 
 	want := map[string]struct {
 		targetGroup string
@@ -65,6 +62,17 @@ func TestDefaultCandidatesContainFirstBatch(t *testing.T) {
 			path:        "./rule-providers/telegram.yaml",
 			interval:    86400,
 		},
+	}
+
+	if len(candidates) != len(want) {
+		t.Fatalf("len(candidates) = %d, want %d", len(candidates), len(want))
+	}
+
+	for _, c := range candidates {
+		if _, ok := want[c.Name]; !ok {
+			t.Fatalf("unexpected candidate %s present in DefaultCandidates", c.Name)
+		}
+		got[c.Name] = c
 	}
 
 	for name, expected := range want {
