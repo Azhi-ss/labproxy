@@ -47,12 +47,13 @@ cat > "$MIXIN" <<'YAML'
 mode: rule
 rules:
   - DOMAIN-SUFFIX,hf-mirror.com,DIRECT
+  - DOMAIN-SUFFIX,huggingface.co,US
 YAML
 
 BIN="$LABPROXY_HOME/bin/labproxy-tui"
 
 "$BIN" rules --mixin-config "$MIXIN" workflow candidates | grep -q "github"
-"$BIN" rules --mixin-config "$MIXIN" workflow inspect | grep -q "rules=1 providers=0"
+"$BIN" rules --mixin-config "$MIXIN" workflow inspect | grep -q "rules=2 providers=0"
 "$BIN" rules --mixin-config "$MIXIN" workflow fetch --candidates=github --url-override=github="$github_url" | grep -q "github rules=1"
 "$BIN" rules --mixin-config "$MIXIN" workflow validate --groups=Proxies --candidates=github --url-override=github="$github_url" | grep -q "github rules=1"
 "$BIN" rules --mixin-config "$MIXIN" workflow plan --candidates=github,openai | grep -q "RULE-SET,github,Proxies"
@@ -62,10 +63,19 @@ echo "$apply_out" | grep -q "backup="
 grep -q "rule-providers:" "$MIXIN"
 grep -q "RULE-SET,github,Proxies" "$MIXIN"
 grep -q "DOMAIN-SUFFIX,hf-mirror.com,DIRECT" "$MIXIN"
+grep -q "DOMAIN-SUFFIX,huggingface.co,US" "$MIXIN"
+hf_mirror_line=$(grep -n -m1 "DOMAIN-SUFFIX,hf-mirror.com,DIRECT" "$MIXIN" | cut -d: -f1)
+huggingface_line=$(grep -n -m1 "DOMAIN-SUFFIX,huggingface.co,US" "$MIXIN" | cut -d: -f1)
+github_ruleset_line=$(grep -n -m1 "RULE-SET,github,Proxies" "$MIXIN" | cut -d: -f1)
+if [ "$hf_mirror_line" -ge "$github_ruleset_line" ] || [ "$huggingface_line" -ge "$github_ruleset_line" ]; then
+  echo "local override rules were not kept before generated github ruleset"
+  exit 1
+fi
 
 backup="${apply_out#*backup=}"
 "$BIN" rules --mixin-config "$MIXIN" workflow rollback --backup="$backup"
 grep -q "DOMAIN-SUFFIX,hf-mirror.com,DIRECT" "$MIXIN"
+grep -q "DOMAIN-SUFFIX,huggingface.co,US" "$MIXIN"
 if grep -q "RULE-SET,github,Proxies" "$MIXIN"; then
   echo "rollback did not remove github ruleset"
   exit 1

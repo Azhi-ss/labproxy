@@ -162,7 +162,7 @@ labproxy rules workflow validate --endpoint=http://127.0.0.1:9090 --candidates=g
 labproxy rules workflow plan --candidates=github,openai
 labproxy rules workflow apply --endpoint=http://127.0.0.1:9090 --candidates=github,openai
 labproxy rules workflow verify --endpoint=http://127.0.0.1:9090 --reload-config=/Users/azhi/.labproxy/runtime.yaml
-labproxy rules workflow rollback --backup=/path/to/mixin.yaml.bak.20260702-120000
+labproxy rules workflow rollback --backup=/path/to/mixin.yaml.preapply-20260702-120000
 ```
 
 The first batch maps providers to existing strategy groups:
@@ -177,7 +177,7 @@ disney -> Disney
 telegram -> Telegram
 ```
 
-Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`.
+Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`. For rollback, use the `backup=` path printed by `apply`; the path above is only a placeholder matching the generated `.preapply-*` backup name pattern.
 
 Hugging Face stays as inline local rules for now because the previously proposed blackmatrix7 HuggingFace provider URL currently returns 404.
 
