@@ -3,6 +3,7 @@ package ruleworkflow
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"labproxy/internal/rules"
 )
@@ -12,7 +13,7 @@ type ApplyResult struct {
 }
 
 var (
-	backupFn        = func(store *rules.Store) (string, error) { return store.Backup() }
+	backupFn        = createApplyBackup
 	loadProvidersFn = func(store *rules.Store) ([]rules.Provider, error) { return store.LoadProviders() }
 	loadRulesFn     = func(store *rules.Store) ([]rules.Rule, error) { return store.LoadRules() }
 	saveProvidersFn = func(store *rules.Store, providers []rules.Provider) error { return store.SaveProviders(providers) }
@@ -44,12 +45,47 @@ func ApplyPlan(store *rules.Store, plan Plan) (ApplyResult, error) {
 
 	if err := saveRulesFn(store, ruleList); err != nil {
 		if backupPath != "" {
-			_ = RollbackMixin(store.Path, backupPath)
+			if rollbackErr := RollbackMixin(store.Path, backupPath); rollbackErr != nil {
+				return ApplyResult{}, fmt.Errorf("save rules: %w; rollback: %w", err, rollbackErr)
+			}
 		}
 		return ApplyResult{}, fmt.Errorf("save rules: %w", err)
 	}
 
 	return ApplyResult{BackupPath: backupPath}, nil
+}
+
+func createApplyBackup(store *rules.Store) (string, error) {
+	data, err := os.ReadFile(store.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	file, err := os.CreateTemp(filepath.Dir(store.Path), filepath.Base(store.Path)+".preapply-*")
+	if err != nil {
+		return "", err
+	}
+	backupPath := file.Name()
+
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		_ = os.Remove(backupPath)
+		return "", writeErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(backupPath)
+		return "", closeErr
+	}
+	if err := os.Chmod(backupPath, 0o644); err != nil {
+		_ = os.Remove(backupPath)
+		return "", err
+	}
+
+	return backupPath, nil
 }
 
 func RollbackMixin(mixinPath, backupPath string) error {
@@ -104,11 +140,7 @@ func mergeRules(existing, incoming []rules.Rule) []rules.Rule {
 	merged := make([]rules.Rule, 0, len(existing)+len(incoming))
 
 	for _, rule := range existing {
-		key := rule.String()
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
+		seen[rule.String()] = struct{}{}
 		merged = append(merged, rule)
 	}
 
