@@ -52,6 +52,8 @@ func runRulesCLI(stdout, stderr io.Writer, args []string, mixinPath string) int 
 		return cliExport(stdout, store, rest)
 	case "providers":
 		return cliProviders(stdout, stderr, store, rest)
+	case "workflow":
+		return cliWorkflow(stdout, stderr, store, rest)
 	case "reset":
 		return cliReset(stdout, stderr, store, rest)
 	default:
