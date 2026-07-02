@@ -73,6 +73,31 @@ payload:
 	}
 }
 
+func TestParseProviderRulesForBehaviorDomainRejectsMappingTextFallback(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{
+			name: "payload mapping line",
+			data: []byte("payload: []\n"),
+		},
+		{
+			name: "arbitrary yaml title line",
+			data: []byte("title: Not Found\n"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseProviderRulesForBehavior(tc.data, "domain")
+			if err == nil || !strings.Contains(err.Error(), "expected bare domain payload") {
+				t.Fatalf("ParseProviderRulesForBehavior error = %v, want bare domain payload", err)
+			}
+		})
+	}
+}
+
 func TestParseProviderRulesForBehaviorIPCIDRFromText(t *testing.T) {
 	data := []byte(`
 # comment

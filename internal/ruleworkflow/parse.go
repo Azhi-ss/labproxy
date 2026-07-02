@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 	"labproxy/internal/rules"
@@ -89,6 +90,9 @@ func parseDomainRuleLines(lines []string) ([]ProviderRule, error) {
 		if strings.Contains(line, ",") {
 			return nil, fmt.Errorf("invalid domain provider rule %q: expected bare domain payload", line)
 		}
+		if !isValidDomainProviderPayload(line) {
+			return nil, fmt.Errorf("invalid domain provider rule %q: expected bare domain payload", line)
+		}
 
 		out = append(out, ProviderRule{
 			// Mihomo domain providers carry bare payload entries, so the
@@ -134,4 +138,33 @@ func normalizeProviderRuleLine(line string) string {
 	line = strings.TrimSpace(line)
 	line = strings.TrimPrefix(line, "- ")
 	return strings.TrimSpace(line)
+}
+
+func isValidDomainProviderPayload(line string) bool {
+	if line == "" || strings.Contains(line, ":") || strings.ContainsFunc(line, unicode.IsSpace) {
+		return false
+	}
+
+	trimmed := strings.TrimPrefix(line, ".")
+	if trimmed == "" || !strings.Contains(trimmed, ".") {
+		return false
+	}
+
+	labels := strings.Split(trimmed, ".")
+	for _, label := range labels {
+		if label == "" {
+			return false
+		}
+		if label == "*" {
+			continue
+		}
+		for _, r := range label {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+				continue
+			}
+			return false
+		}
+	}
+
+	return true
 }

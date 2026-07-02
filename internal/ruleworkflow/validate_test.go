@@ -119,6 +119,59 @@ func TestValidateSourcesRejectsNativeBehaviorTypedLines(t *testing.T) {
 	}
 }
 
+func TestValidateSourcesRejectsInvalidNativeDomainText(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      []byte
+		targetErr string
+	}{
+		{
+			name:      "rejects payload mapping fallback",
+			data:      []byte("payload: []\n"),
+			targetErr: "expected bare domain payload",
+		},
+		{
+			name:      "rejects title mapping fallback",
+			data:      []byte("title: Not Found\n"),
+			targetErr: "expected bare domain payload",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			src := FetchedSource{
+				Candidate: candidate("domains", "Domains", "https://example.test/domains.yaml", "Proxies", "domain", "./rule-providers/domains.yaml"),
+				Data:      tc.data,
+			}
+
+			_, err := ValidateSources([]FetchedSource{src}, map[string]bool{"Proxies": true})
+			if err == nil || !strings.Contains(err.Error(), tc.targetErr) {
+				t.Fatalf("ValidateSources error = %v, want substring %q", err, tc.targetErr)
+			}
+		})
+	}
+}
+
+func TestValidateSourcesAcceptsDocumentedNativeDomainExamples(t *testing.T) {
+	src := FetchedSource{
+		Candidate: candidate("domains", "Domains", "https://example.test/domains.yaml", "Proxies", "domain", "./rule-providers/domains.yaml"),
+		Data: []byte(`
+payload:
+  - '.blogger.com'
+  - '*.*.microsoft.com'
+  - books.itunes.apple.com
+`),
+	}
+
+	results, err := ValidateSources([]FetchedSource{src}, map[string]bool{"Proxies": true})
+	if err != nil {
+		t.Fatalf("ValidateSources: %v", err)
+	}
+	if len(results) != 1 || results[0].RuleCount != 3 {
+		t.Fatalf("results = %+v, want single validated domain provider", results)
+	}
+}
+
 func TestValidateSourcesRejectsInvalidNativeIPCIDR(t *testing.T) {
 	src := FetchedSource{
 		Candidate: candidate("ips", "IPs", "https://example.test/ips.yaml", "Streaming", "ipcidr", "./rule-providers/ips.yaml"),
