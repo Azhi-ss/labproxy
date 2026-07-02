@@ -83,6 +83,18 @@ func TestValidateSourcesRejectsBehaviorMismatches(t *testing.T) {
 	}
 }
 
+func TestValidateSourcesRejectsInvalidClassicalRuleType(t *testing.T) {
+	src := FetchedSource{
+		Candidate: candidate("mixed", "Mixed", "https://example.test/mixed.yaml", "Fallback", "classical", "./rule-providers/mixed.yaml"),
+		Data:      []byte("payload:\n  - BOGUS,example.com\n"),
+	}
+
+	_, err := ValidateSources([]FetchedSource{src}, map[string]bool{"Fallback": true})
+	if err == nil || !strings.Contains(err.Error(), "unsupported rule type") {
+		t.Fatalf("ValidateSources error = %v, want unsupported rule type", err)
+	}
+}
+
 func TestValidateSourcesSuccess(t *testing.T) {
 	sources := []FetchedSource{
 		{

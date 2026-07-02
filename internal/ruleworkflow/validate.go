@@ -57,11 +57,15 @@ func ValidateSources(sources []FetchedSource, strategyGroups map[string]bool) ([
 }
 
 func validateRuleBehavior(rule ProviderRule, behavior string) error {
+	ruleType := strings.ToUpper(strings.TrimSpace(rule.Type))
+	if !rules.RuleType(ruleType).IsValid() {
+		return fmt.Errorf("unsupported rule type %q", rule.Type)
+	}
+
 	if behavior == "classical" {
 		return nil
 	}
 
-	ruleType := strings.ToUpper(strings.TrimSpace(rule.Type))
 	switch behavior {
 	case "domain":
 		switch rules.RuleType(ruleType) {
