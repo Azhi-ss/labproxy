@@ -76,6 +76,7 @@ build/
 CLAUDE.md
 CODEBUDDY.md
 AGENTS.md
+!AGENTS.md
 .mcp.json
 .superpowers/
 gan-harness/
