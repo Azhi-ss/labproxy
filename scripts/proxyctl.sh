@@ -82,6 +82,12 @@ _macos_run_admin_shell() {
     osascript -e "do shell script \"${script}\" with administrator privileges" >/dev/null
 }
 
+_flush_macos_dns_cache() {
+    _macos_domain_resolver_enabled || return 0
+    dscacheutil -flushcache 2>/dev/null || true
+    killall -HUP mDNSResponder 2>/dev/null || true
+}
+
 _set_macos_domain_resolvers() {
     _macos_domain_resolver_enabled || return 0
     _get_dns_port
@@ -110,6 +116,7 @@ $(_macos_domain_resolver_domains)
 EOF
 
     rm -f "$tmp"
+    _flush_macos_dns_cache
 }
 
 _unset_macos_domain_resolvers() {
@@ -129,6 +136,7 @@ _unset_macos_domain_resolvers() {
     done <<EOF
 $(_macos_domain_resolver_domains)
 EOF
+    _flush_macos_dns_cache
 }
 
 function labproxyon() {
@@ -596,6 +604,7 @@ function labproxytui() {
 
     # 读取语言偏好（用数组传参，避免 zsh 不做单词分割导致 "--lang zh" 被当成单个 flag）
     typeset -a lang_args
+    lang_args=()
     if [ -f "$LABPROXY_LANG_FILE" ]; then
         local lang_val
         lang_val=$(head -n 1 "$LABPROXY_LANG_FILE" | tr -d '[:space:]')
