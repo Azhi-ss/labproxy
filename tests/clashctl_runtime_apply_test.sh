@@ -181,6 +181,14 @@ EOF
     chmod +x "$LABPROXY_TUI_BIN"
 }
 
+uname() {
+    if [ "${FAKE_UNAME_DARWIN:-0}" = "1" ] && [ "${1-}" = "-s" ]; then
+        printf 'Darwin\n'
+        return 0
+    fi
+    command uname "$@"
+}
+
 restart_count() {
     if [ -f "$RESTART_LOG" ]; then
         wc -l < "$RESTART_LOG" | tr -d ' '
@@ -194,8 +202,13 @@ reset_files() {
     IS_RUNNING_RET=0
     START_LABPROXY_RET=0
     DOWNLOAD_CONFIG_RET=0
+    FAKE_UNAME_DARWIN=0
+    export LABPROXY_MACOS_RESOLVER_DIR="$TEST_ROOT/resolver"
+    export LABPROXY_MACOS_RESOLVER_DOMAINS="linux.do"
     : > "$RESTART_LOG"
     : > "$ACTION_LOG"
+    rm -rf "$LABPROXY_MACOS_RESOLVER_DIR"
+    mkdir -p "$LABPROXY_MACOS_RESOLVER_DIR"
 
     cat > "$LABPROXY_CONFIG_MIXIN" <<'EOF'
 secret:
@@ -341,6 +354,34 @@ EOF
     assert_file_contains "$ACTION_LOG" "set_system_proxy"
 }
 
+test_labproxyon_writes_macos_domain_resolver() {
+    FAKE_UNAME_DARWIN=1
+    cat > "$LABPROXY_CONFIG_MIXIN" <<'EOF'
+secret: startup-secret
+tun.enable: false
+allow-lan: false
+system-proxy.enable: false
+EOF
+
+    labproxyon
+
+    assert_file_contains "$LABPROXY_MACOS_RESOLVER_DIR/linux.do" "nameserver 127.0.0.1"
+    assert_file_contains "$LABPROXY_MACOS_RESOLVER_DIR/linux.do" "port 6666"
+}
+
+test_labproxyoff_removes_macos_domain_resolver() {
+    FAKE_UNAME_DARWIN=1
+    mkdir -p "$LABPROXY_MACOS_RESOLVER_DIR"
+    echo "stale resolver" > "$LABPROXY_MACOS_RESOLVER_DIR/linux.do"
+
+    labproxyoff
+
+    if [ -e "$LABPROXY_MACOS_RESOLVER_DIR/linux.do" ]; then
+        printf 'expected labproxyoff to remove macOS domain resolver\n' >&2
+        return 1
+    fi
+}
+
 test_labproxyon_stops_after_start_failure() {
     START_LABPROXY_RET=1
     IS_RUNNING_RET=1
@@ -422,6 +463,8 @@ run_test "labproxysecret updates mixin and restarts" test_labproxysecret_updates
 run_test "tun commands update mixin and restart" test_tun_commands_update_mixin_and_restart
 run_test "lan commands update mixin and restart" test_lan_commands_update_mixin_and_restart
 run_test "labproxyon builds runtime and finalizes startup" test_labproxyon_builds_runtime_and_finalizes_startup
+run_test "labproxyon writes macOS domain resolver" test_labproxyon_writes_macos_domain_resolver
+run_test "labproxyoff removes macOS domain resolver" test_labproxyoff_removes_macos_domain_resolver
 run_test "labproxyon stops after start failure" test_labproxyon_stops_after_start_failure
 run_test "labproxysubscribe saves url without immediate update" test_labproxysubscribe_saves_url_without_immediate_update
 run_test "labproxysubupdate persists url logs success and restarts" test_labproxysubupdate_persists_url_logs_success_and_restarts

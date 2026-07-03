@@ -16,11 +16,7 @@ allow-lan: false # 若开启务必设置用户验证以防暴露公网后被滥�
 authentication:
   # - "username:password" # 用户验证（clashon 会自动填充验证信息）
 
-# DNS 修正
-hosts:
-  linux.do:
-    - 104.20.16.234
-    - 172.66.166.61
+# DNS 修正：使用 DoH，避免本地/运营商 DNS 污染；不要固定 CDN IP
 
 # 自定义规则
 rules:
@@ -50,5 +46,17 @@ dns:
   listen: 0.0.0.0:15353  # DNS listen port
   enhanced-mode: fake-ip
   nameserver:
-    - 114.114.114.114
-    - 8.8.8.8
+    - https://223.5.5.5/dns-query
+    - https://doh.pub/dns-query
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    domain:
+      - +.linux.do
+  nameserver-policy:
+    +.linux.do:
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
