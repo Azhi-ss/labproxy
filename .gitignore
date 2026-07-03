@@ -75,9 +75,11 @@ build/
 .claude/
 CLAUDE.md
 CODEBUDDY.md
+AGENTS.md
 .mcp.json
 .superpowers/
 gan-harness/
 
 # rules backups
 mixin.yaml.bak.*
+.gstack/
