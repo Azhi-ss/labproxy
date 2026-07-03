@@ -26,6 +26,10 @@ _labproxy_service_installed() {
 # 注：系统级 LaunchDaemon 在 launchctl list 中对普通用户不可见，故用 pgrep 检测进程
 _labproxy_service_active() {
     _labproxy_service_installed || return 1
+    if command -v _find_existing_kernel_pid >/dev/null 2>&1; then
+        _find_existing_kernel_pid >/dev/null 2>&1
+        return $?
+    fi
     pgrep -f "${LABPROXY_HOME_DIR}/bin/${BIN_KERNEL_NAME}" >/dev/null 2>&1
 }
 

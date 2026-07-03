@@ -1799,6 +1799,12 @@ stop_labproxy() {
 is_labproxy_running() {
     # 服务模式优先：特权服务已加载且进程存活则视为运行中
     if command -v _labproxy_service_active >/dev/null 2>&1 && _labproxy_service_active 2>/dev/null; then
+        local service_pid
+        service_pid=$(_find_existing_kernel_pid 2>/dev/null || true)
+        if [ -n "$service_pid" ]; then
+            mkdir -p "$(dirname "$LABPROXY_HOME_DIR/config/labproxy.pid")"
+            echo "$service_pid" > "$LABPROXY_HOME_DIR/config/labproxy.pid"
+        fi
         return 0
     fi
 
