@@ -59,6 +59,78 @@ _unset_system_proxy() {
     }
 }
 
+_macos_domain_resolver_enabled() {
+    [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
+    [ "${LABPROXY_MACOS_DOMAIN_RESOLVER:-true}" != "false" ] || return 1
+}
+
+_macos_domain_resolver_dir() {
+    printf '%s\n' "${LABPROXY_MACOS_RESOLVER_DIR:-/etc/resolver}"
+}
+
+_macos_domain_resolver_domains() {
+    printf '%s\n' "${LABPROXY_MACOS_RESOLVER_DOMAINS:-linux.do}"
+}
+
+_macos_run_admin_shell() {
+    local script=$1
+    if sudo -n sh -c "$script" 2>/dev/null; then
+        return 0
+    fi
+
+    command -v osascript >/dev/null 2>&1 || return 1
+    osascript -e "do shell script \"${script}\" with administrator privileges" >/dev/null
+}
+
+_set_macos_domain_resolvers() {
+    _macos_domain_resolver_enabled || return 0
+    _get_dns_port
+
+    local resolver_dir domain tmp script
+    resolver_dir=$(_macos_domain_resolver_dir)
+    tmp=$(mktemp "${TMPDIR:-/tmp}/labproxy-resolver.XXXXXX") || return 1
+
+    while IFS= read -r domain; do
+        [ -n "$domain" ] || continue
+        cat > "$tmp" <<EOF
+# Managed by labproxy: route only ${domain} lookups to mihomo DNS.
+nameserver 127.0.0.1
+port ${DNS_PORT}
+timeout 2
+EOF
+        if [ -d "$resolver_dir" ] && [ -w "$resolver_dir" ]; then
+            cp "$tmp" "${resolver_dir}/${domain}" || { rm -f "$tmp"; return 1; }
+            chmod 0644 "${resolver_dir}/${domain}" 2>/dev/null || true
+        else
+            script="mkdir -p '${resolver_dir}' && cp '${tmp}' '${resolver_dir}/${domain}' && chmod 0644 '${resolver_dir}/${domain}'"
+            _macos_run_admin_shell "$script" || { rm -f "$tmp"; return 1; }
+        fi
+    done <<EOF
+$(_macos_domain_resolver_domains)
+EOF
+
+    rm -f "$tmp"
+}
+
+_unset_macos_domain_resolvers() {
+    _macos_domain_resolver_enabled || return 0
+
+    local resolver_dir domain script
+    resolver_dir=$(_macos_domain_resolver_dir)
+
+    while IFS= read -r domain; do
+        [ -n "$domain" ] || continue
+        if [ -w "$resolver_dir" ]; then
+            rm -f "${resolver_dir}/${domain}" || return 1
+        else
+            script="rm -f '${resolver_dir}/${domain}'"
+            _macos_run_admin_shell "$script" || return 1
+        fi
+    done <<EOF
+$(_macos_domain_resolver_domains)
+EOF
+}
+
 function labproxyon() {
     _prepare_runtime_start || return 1
 
@@ -259,6 +331,7 @@ watch_proxy() {
 }
 
 function labproxyoff() {
+    _unset_macos_domain_resolvers || _failcat "⚠️ 无法清理 macOS 域名 DNS 接管，请手动删除 /etc/resolver/linux.do"
     # Stop mihomo process
     stop_labproxy
     _unset_system_proxy
@@ -615,6 +688,7 @@ _finalize_runtime_start() {
 
     # 保存端口状态并设置系统代理
     _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
+    _set_macos_domain_resolvers || _failcat "⚠️ 无法更新 macOS 域名 DNS 接管，请检查 /etc/resolver 权限"
     _set_system_proxy
     _okcat '代理环境已开启'
     _show_proxy_info
