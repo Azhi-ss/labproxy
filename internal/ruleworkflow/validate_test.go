@@ -196,6 +196,28 @@ func TestValidateSourcesRejectsInvalidClassicalRuleType(t *testing.T) {
 	}
 }
 
+func TestValidateSourcesAcceptsClassicalIPASNRule(t *testing.T) {
+	src := FetchedSource{
+		Candidate: candidate("openai", "OpenAI", "https://example.test/openai.yaml", "OpenAI", "classical", "./rule-providers/openai.yaml"),
+		Data: []byte(`
+payload:
+  - DOMAIN-SUFFIX,openai.com
+  - IP-ASN,20473
+`),
+	}
+
+	results, err := ValidateSources([]FetchedSource{src}, map[string]bool{"OpenAI": true})
+	if err != nil {
+		t.Fatalf("ValidateSources: %v", err)
+	}
+	if len(results) != 1 || results[0].RuleCount != 2 {
+		t.Fatalf("results = %+v, want single validated provider with 2 rules", results)
+	}
+	if results[0].Rules[1].Type != "IP-ASN" || results[0].Rules[1].Payload != "20473" {
+		t.Fatalf("unexpected parsed rules: %+v", results[0].Rules)
+	}
+}
+
 func TestValidateSourcesSuccess(t *testing.T) {
 	sources := []FetchedSource{
 		{
@@ -221,6 +243,7 @@ payload:
 payload:
   - DOMAIN-SUFFIX,openai.com
   - IP-CIDR,8.8.8.0/24
+  - IP-ASN,20473
 `),
 		},
 	}
@@ -242,7 +265,7 @@ payload:
 	if results[1].Candidate.Name != "ips" || results[1].RuleCount != 2 {
 		t.Fatalf("second result = %+v", results[1])
 	}
-	if results[2].Candidate.Name != "mixed" || results[2].RuleCount != 2 {
+	if results[2].Candidate.Name != "mixed" || results[2].RuleCount != 3 {
 		t.Fatalf("third result = %+v", results[2])
 	}
 	if results[0].Rules[0].Type != "DOMAIN" {
@@ -250,5 +273,8 @@ payload:
 	}
 	if results[1].Rules[1].Type != "IP-CIDR6" {
 		t.Fatalf("unexpected parsed ip rules: %+v", results[1].Rules)
+	}
+	if results[2].Rules[2].Type != "IP-ASN" {
+		t.Fatalf("unexpected parsed classical rules: %+v", results[2].Rules)
 	}
 }

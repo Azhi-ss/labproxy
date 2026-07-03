@@ -177,7 +177,7 @@ disney -> Disney
 telegram -> Telegram
 ```
 
-Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`. For rollback, use the `backup=` path printed by `apply`; the path above is only a placeholder matching the generated `.preapply-*` backup name pattern.
+Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`. For rollback, use the `backup=` path printed by `apply`; the path above is only a placeholder matching the generated `.preapply-*` backup name pattern. The installed `labproxy` wrapper injects the active mixin path automatically; when running `labproxy-tui` directly, pass `--mixin-config /Users/azhi/.labproxy/mixin.yaml` after `rules`.
 
 Hugging Face stays as inline local rules for now because the previously proposed blackmatrix7 HuggingFace provider URL currently returns 404.
 
@@ -202,7 +202,7 @@ labproxy rules providers add --name=google --type=http --behavior=domain \
 labproxy rules providers refresh google
 ```
 
-Supported rule types: `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `IP-CIDR`, `IP-CIDR6`, `SRC-IP-CIDR`, `SRC-PORT`, `GEOIP`, `GEOSITE`, `RULE-SET`, `MATCH`, `MATCH-SRC`.
+Supported rule types: `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `IP-CIDR`, `IP-CIDR6`, `IP-ASN`, `SRC-IP-CIDR`, `SRC-PORT`, `GEOIP`, `GEOSITE`, `RULE-SET`, `MATCH`, `MATCH-SRC`.
 
 ---
 

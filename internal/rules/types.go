@@ -14,6 +14,7 @@ const (
 	TypeDomainRegex   RuleType = "DOMAIN-REGEX"
 	TypeIPCIDR        RuleType = "IP-CIDR"
 	TypeIPCIDR6       RuleType = "IP-CIDR6"
+	TypeIPASN         RuleType = "IP-ASN"
 	TypeSrcIPCidr     RuleType = "SRC-IP-CIDR"
 	TypeSrcPort       RuleType = "SRC-PORT"
 	TypeGEOIP         RuleType = "GEOIP"
@@ -26,7 +27,7 @@ const (
 func (rt RuleType) IsValid() bool {
 	switch rt {
 	case TypeDomain, TypeDomainSuffix, TypeDomainKeyword, TypeDomainRegex,
-		TypeIPCIDR, TypeIPCIDR6, TypeSrcIPCidr, TypeSrcPort,
+		TypeIPCIDR, TypeIPCIDR6, TypeIPASN, TypeSrcIPCidr, TypeSrcPort,
 		TypeGEOIP, TypeGEOSITE, TypeRuleSet, TypeMatch, TypeMatchSrc:
 		return true
 	}

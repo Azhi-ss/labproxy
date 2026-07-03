@@ -10,6 +10,7 @@ mkdir -p "$FIXTURES"
 cat > "$FIXTURES/github.yaml" <<'YAML'
 payload:
   - DOMAIN-SUFFIX,github.com
+  - IP-ASN,20473
 YAML
 
 python3 - "$FIXTURES" "$LABPROXY_HOME/port" <<'PY' &
@@ -54,8 +55,8 @@ BIN="$LABPROXY_HOME/bin/labproxy-tui"
 
 "$BIN" rules --mixin-config "$MIXIN" workflow candidates | grep -q "github"
 "$BIN" rules --mixin-config "$MIXIN" workflow inspect | grep -q "rules=2 providers=0"
-"$BIN" rules --mixin-config "$MIXIN" workflow fetch --candidates=github --url-override=github="$github_url" | grep -q "github rules=1"
-"$BIN" rules --mixin-config "$MIXIN" workflow validate --groups=Proxies --candidates=github --url-override=github="$github_url" | grep -q "github rules=1"
+"$BIN" rules --mixin-config "$MIXIN" workflow fetch --candidates=github --url-override=github="$github_url" | grep -q "github rules=2"
+"$BIN" rules --mixin-config "$MIXIN" workflow validate --groups=Proxies --candidates=github --url-override=github="$github_url" | grep -q "github rules=2"
 "$BIN" rules --mixin-config "$MIXIN" workflow plan --candidates=github,openai | grep -q "RULE-SET,github,Proxies"
 
 apply_out=$("$BIN" rules --mixin-config "$MIXIN" workflow apply --groups=Proxies --candidates=github --url-override=github="$github_url")

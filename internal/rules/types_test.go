@@ -5,7 +5,7 @@ import "testing"
 func TestRuleType_IsValid(t *testing.T) {
 	valid := []RuleType{
 		TypeDomain, TypeDomainSuffix, TypeDomainKeyword, TypeDomainRegex,
-		TypeIPCIDR, TypeIPCIDR6, TypeSrcIPCidr, TypeSrcPort,
+		TypeIPCIDR, TypeIPCIDR6, TypeIPASN, TypeSrcIPCidr, TypeSrcPort,
 		TypeGEOIP, TypeGEOSITE, TypeRuleSet, TypeMatch, TypeMatchSrc,
 	}
 	for _, rt := range valid {
