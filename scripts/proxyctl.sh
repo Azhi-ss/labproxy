@@ -85,7 +85,7 @@ _macos_run_admin_shell() {
 _flush_macos_dns_cache() {
     _macos_domain_resolver_enabled || return 0
     dscacheutil -flushcache 2>/dev/null || true
-    killall -HUP mDNSResponder 2>/dev/null || true
+    sudo -n killall -HUP mDNSResponder 2>/dev/null || killall -HUP mDNSResponder 2>/dev/null || true
 }
 
 _set_macos_domain_resolvers() {
