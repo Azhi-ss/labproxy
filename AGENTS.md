@@ -206,6 +206,39 @@ git branch -vv
 6. 如仓库支持 GitHub PR，创建 PR，并在 PR 描述中写清测试结果、风险和未测项。
 7. 只有当任务明确要求 agent 自动合并，且 CI/测试通过、无未解决 review/blocker、工作树干净时，才合并到 `main`。
 
+### CI/CD 结果检查和失败处理
+
+本仓库使用 GitHub Actions CI。CI 是合并门禁，不是装饰性信号。push 或创建 PR 后，agent 必须主动检查远端 CI 结果：
+
+```bash
+gh run list --branch "$(git branch --show-current)" --limit 5
+gh run watch <run-id> --exit-status
+gh run view <run-id> --log-failed
+```
+
+如果当前分支有关联 PR，也要检查 PR checks：
+
+```bash
+gh pr checks --watch
+```
+
+CI 失败时：
+
+1. 读取失败 job 和失败 step 的日志，定位到具体命令、包、测试名或脚本行。
+2. 判断失败是否由当前分支引入；不确定时默认当作当前分支问题处理。
+3. 复现在本地可复现的失败，修复后重新运行相关最小测试，再运行完整 CI 等价命令。
+4. 提交修复并重新 push 当前分支。
+5. 重新等待 CI，直到通过或遇到无法自行解决的外部阻塞。
+
+禁止在 CI 失败、CI 未完成、或未读取失败日志的状态下合并。只有明确是 GitHub Actions 平台故障、依赖源临时不可用、或远端权限问题时，才把它报告为外部阻塞；报告必须包含 run URL、失败 job、失败 step 和已尝试的本地复现命令。
+
+当前 CI 覆盖：
+
+- `go test ./...`
+- `bash tests/rules_workflow_cli_test.sh`
+
+当前没有自动发布/安装态替换的 CD。涉及发布 binary、替换 `/Users/azhi/.labproxy/bin/labproxy-tui`、重启服务或 live proxy reload 时，仍按本文件的备份、只读验证和人工高影响边界执行，不能让 CI/CD 自动改用户本机运行态。
+
 本地自动并入 `main` 的标准流程：
 
 ```bash
