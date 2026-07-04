@@ -153,9 +153,6 @@ type model struct {
 	width  int
 	height int
 
-	// Cached adaptive layout values (updated by rebuildGroups)
-	groupPanelWidth int
-
 	search     textinput.Model
 	searchMode bool
 	helpMode   bool

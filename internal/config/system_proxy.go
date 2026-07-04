@@ -74,7 +74,7 @@ func ReadSystemProxyEnabled(path string) (bool, error) {
 }
 
 func WriteSystemProxyEnabled(path string, enabled bool) error {
-	return updateSystemProxyEnabled(path, boolString(enabled))
+	return updateNestedBoolKey(path, "system-proxy", "enable", boolString(enabled))
 }
 
 func ReadAllowLanEnabled(path string) (bool, error) {
@@ -102,10 +102,6 @@ func WriteMode(path, mode string) error {
 		return fmt.Errorf("unsupported mode %q", mode)
 	}
 	return updateTopLevelKey(path, "mode", normalized)
-}
-
-func updateSystemProxyEnabled(path, value string) error {
-	return updateNestedBoolKey(path, "system-proxy", "enable", value)
 }
 
 func updateTopLevelKey(path, key, value string) error {

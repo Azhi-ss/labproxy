@@ -31,33 +31,6 @@ func (s *Store) AddProvider(p Provider) (Diff, error) {
 	return Diff{}, nil
 }
 
-func (s *Store) UpdateProvider(name string, p Provider) (Diff, error) {
-	if err := ValidateProvider(p); err != nil {
-		return Diff{}, err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	providers, err := s.loadProviders()
-	if err != nil {
-		return Diff{}, err
-	}
-	found := false
-	for i, existing := range providers {
-		if existing.Name == name {
-			providers[i] = p
-			found = true
-			break
-		}
-	}
-	if !found {
-		return Diff{}, fmt.Errorf("provider %q not found", name)
-	}
-	if err := s.saveProviders(providers); err != nil {
-		return Diff{}, err
-	}
-	return Diff{}, nil
-}
-
 func (s *Store) DeleteProvider(name string) (Diff, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

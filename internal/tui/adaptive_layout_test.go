@@ -7,7 +7,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"labproxy/internal/proxy"
-	"labproxy/internal/tui/theme"
 )
 
 // helper to create a test model with groups
@@ -16,15 +15,6 @@ func makeTestModel(groups []GroupView, width int) model {
 	m.groups = groups
 	m.width = width
 	m.height = 24
-	// trigger cache update via rebuildGroups logic
-	docWidth := max(0, width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
-	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
-	if columnContentWidth > 0 {
-		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
-	} else {
-		m.groupPanelWidth = 20
-	}
 	return m
 }
 
@@ -139,73 +129,6 @@ func TestCalcGroupsMinWidth_WithCurrentMark(t *testing.T) {
 	}
 }
 
-// ========== Cached Layout Tests ==========
-
-func TestRebuildGroups_UpdatesCache(t *testing.T) {
-	m := newModel(nil, Options{})
-	m.width = 120
-	m.rawProxies = proxy.ProxiesResponse{
-		Proxies: map[string]proxy.Proxy{
-			"PROXY": {
-				Type: "Selector",
-				Now:  "node-a",
-				All:  []string{"node-a", "node-b"},
-			},
-		},
-	}
-
-	initialCache := m.groupPanelWidth
-	m.rebuildGroups()
-
-	if m.groupPanelWidth == initialCache && m.groupPanelWidth != 20 {
-		t.Errorf("rebuildGroups did not update groupPanelWidth cache")
-	}
-
-	if m.groupPanelWidth <= 0 {
-		t.Errorf("groupPanelWidth should be positive after rebuildGroups, got %d", m.groupPanelWidth)
-	}
-}
-
-func TestRebuildGroups_CacheOnWindowSizeChange(t *testing.T) {
-	m := newModel(nil, Options{})
-	m.rawProxies = proxy.ProxiesResponse{
-		Proxies: map[string]proxy.Proxy{
-			"PROXY": {Type: "Selector", Now: "n1", All: []string{"n1", "n2"}},
-		},
-	}
-	m.groups = BuildGroupViews(m.rawProxies, "")
-
-	// Set narrow width
-	m.width = 60
-	m.rebuildGroups()
-	narrowWidth := m.groupPanelWidth
-
-	// Set wide width
-	m.width = 200
-	m.rebuildGroups()
-	wideWidth := m.groupPanelWidth
-
-	// Wide window should give more (or equal) space to Groups panel
-	// Note: this depends on actual content, but wider windows generally allow more flexibility
-	t.Logf("narrowWidth=%d, wideWidth=%d", narrowWidth, wideWidth)
-
-	if narrowWidth <= 0 || wideWidth <= 0 {
-		t.Errorf("both widths should be positive: narrow=%d, wide=%d", narrowWidth, wideWidth)
-	}
-}
-
-func TestRebuildGroups_FallbackWhenZeroContentWidth(t *testing.T) {
-	m := newModel(nil, Options{})
-	m.width = 5 // very small
-	m.height = 10
-	m.rebuildGroups()
-
-	// When content width is 0 or negative, fallback to 20
-	if m.groupPanelWidth != 20 {
-		t.Errorf("expected fallback value 20, got %d", m.groupPanelWidth)
-	}
-}
-
 // ========== Adaptive Render Tests ==========
 
 func TestRenderBody_DoesNotPanic_NarrowWindow(t *testing.T) {
@@ -288,10 +211,10 @@ func TestRenderBody_OptionsPanelHasMinimumSpace(t *testing.T) {
 	m.rebuildGroups()
 
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
+	panelFrameWidth := panelBaseStyle(m.theme).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
 
-	leftWidth := m.groupPanelWidth
+	leftWidth := m.calcGroupsMinWidth(columnContentWidth)
 	rightWidth := columnContentWidth - leftWidth
 
 	t.Logf("columnContentWidth=%d, leftWidth(Groups)=%d, rightWidth(Options)=%d",
@@ -314,16 +237,9 @@ func TestUpdate_WindowSizeMsg_TriggersRecalculation(t *testing.T) {
 	}
 	m.groups = BuildGroupViews(m.rawProxies, "")
 
-	// Initial state with default width
-	initialWidth := m.groupPanelWidth
-
 	// Simulate WindowSizeMsg for a different size
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 180, Height: 40})
 	model := newM.(model)
-
-	if model.groupPanelWidth == initialWidth && initialWidth != 20 {
-		t.Log("Note: groupPanelWidth may stay same if content hasn't changed significantly")
-	}
 
 	if model.width != 180 {
 		t.Errorf("expected width 180, got %d", model.width)

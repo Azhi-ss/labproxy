@@ -164,15 +164,6 @@ func (s *Store) List() ([]string, error) {
 	return names, nil
 }
 
-// Exists 判断 profile 是否存在。
-func (s *Store) Exists(name string) bool {
-	if err := validName(name); err != nil {
-		return false
-	}
-	info, err := os.Stat(s.profileDir(name))
-	return err == nil && info.IsDir()
-}
-
 // Delete 删除一个 profile。
 func (s *Store) Delete(name string) error {
 	if err := validName(name); err != nil {

@@ -1,9 +1,6 @@
 package rules
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 type RuleType string
 
@@ -69,8 +66,4 @@ type Diff struct {
 type ImportSource struct {
 	Kind string
 	Ref  string
-}
-
-func (s ImportSource) String() string {
-	return fmt.Sprintf("%s:%s", s.Kind, s.Ref)
 }

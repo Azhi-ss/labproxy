@@ -11,9 +11,9 @@ payload:
   - DOMAIN-SUFFIX,github.com
   - DOMAIN,raw.githubusercontent.com
 `)
-	got, err := ParseProviderRules(data)
+	got, err := ParseProviderRulesForBehavior(data, "classical")
 	if err != nil {
-		t.Fatalf("ParseProviderRules: %v", err)
+		t.Fatalf("ParseProviderRulesForBehavior: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))
@@ -29,9 +29,9 @@ func TestParseProviderRulesFromPlainList(t *testing.T) {
 - DOMAIN-SUFFIX,youtube.com
 DOMAIN-SUFFIX,googlevideo.com
 `)
-	got, err := ParseProviderRules(data)
+	got, err := ParseProviderRulesForBehavior(data, "classical")
 	if err != nil {
-		t.Fatalf("ParseProviderRules: %v", err)
+		t.Fatalf("ParseProviderRulesForBehavior: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))

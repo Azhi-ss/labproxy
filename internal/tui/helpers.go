@@ -134,17 +134,6 @@ func fallback(value, alt string) string {
 	return value
 }
 
-func truncate(value string, width int) string {
-	return ansi.Truncate(value, width, "…")
-}
-
-func delayLabel(t *theme.Theme, ms int) string {
-	if ms <= 0 {
-		return mutedStyle(t).Render("--")
-	}
-	return getDelayStyle(t, ms).Render(fmt.Sprintf("%dms", ms))
-}
-
 func window(selected, total, limit int) (int, int) {
 	if total <= limit {
 		return 0, total
@@ -159,13 +148,6 @@ func window(selected, total, limit int) (int, int) {
 		start = end - limit
 	}
 	return start, end
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func clamp(value, low, high int) int {
@@ -198,14 +180,6 @@ func modeLabel(t *theme.Theme, mode string) string {
 		mode = fallback(mode, "unknown")
 	}
 	return getModeStyle(t, mode).Render(mode)
-}
-
-func modeLabelPlain(mode string) string {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode != "rule" && mode != "global" && mode != "direct" {
-		mode = fallback(mode, "unknown")
-	}
-	return mode
 }
 
 func nextMode(current string) string {

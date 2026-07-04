@@ -83,12 +83,6 @@ func (s *Store) loadRules() ([]Rule, error) {
 	return rules, scanner.Err()
 }
 
-func (s *Store) Backup() (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.backup()
-}
-
 func (s *Store) backup() (string, error) {
 	data, err := os.ReadFile(s.Path)
 	if err != nil {

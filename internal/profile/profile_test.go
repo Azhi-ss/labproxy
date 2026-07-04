@@ -83,18 +83,6 @@ func TestLoadNotFound(t *testing.T) {
 	}
 }
 
-func TestExists(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := NewStore(dir)
-	if s.Exists("x") {
-		t.Error("x should not exist before create")
-	}
-	s.Create(Profile{Name: "x", Mixin: []byte("x\n"), Rules: []byte("y\n")})
-	if !s.Exists("x") {
-		t.Error("x should exist after create")
-	}
-}
-
 func TestDelete(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
@@ -102,8 +90,8 @@ func TestDelete(t *testing.T) {
 	if err := s.Delete("tmp"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if s.Exists("tmp") {
-		t.Error("tmp should not exist after delete")
+	if _, err := os.Stat(filepath.Join(dir, "profiles", "tmp")); !os.IsNotExist(err) {
+		t.Fatalf("expected profile dir removed, stat err=%v", err)
 	}
 }
 

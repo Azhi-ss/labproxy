@@ -500,35 +500,6 @@ func TestUpdate_KeyMsg_SearchModeEnterUsesLocalizedFilterStatus(t *testing.T) {
 	}
 }
 
-func TestFocusLabel_Localized(t *testing.T) {
-	previousLang := currentLang
-	SetLanguage(LangZh)
-	t.Cleanup(func() { SetLanguage(previousLang) })
-
-	client := proxy.NewClient("http://localhost:9090", "")
-	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-
-	m.focus = focusGroups
-	if got := m.focusLabel(); got != "代理组" {
-		t.Fatalf("focusGroups label: expected 代理组, got %q", got)
-	}
-
-	m.focus = focusOptions
-	if got := m.focusLabel(); got != "候选节点" {
-		t.Fatalf("focusOptions label: expected 候选节点, got %q", got)
-	}
-
-	SetLanguage(LangEn)
-	m.focus = focusGroups
-	if got := m.focusLabel(); got != "groups" {
-		t.Fatalf("focusGroups en label: expected groups, got %q", got)
-	}
-	m.focus = focusOptions
-	if got := m.focusLabel(); got != "options" {
-		t.Fatalf("focusOptions en label: expected options, got %q", got)
-	}
-}
-
 func TestValidateRestartCommand(t *testing.T) {
 	tests := []struct {
 		cmd     string
@@ -891,58 +862,6 @@ func TestNextMode(t *testing.T) {
 	}
 }
 
-func TestTruncate(t *testing.T) {
-	tests := []struct {
-		input    string
-		width    int
-		expected string
-	}{
-		{"short", 10, "short"},
-		{"longer text", 5, "long…"},
-		{"ab", 2, "ab"},
-		{"abc", 2, "a…"},
-		{"", 5, ""},
-		{"test", 0, ""},
-		// ansi.Truncate returns "…" when width is too small to fit char + ellipsis
-		{"test", 1, "…"},
-	}
-
-	for _, tt := range tests {
-		result := truncate(tt.input, tt.width)
-		if result != tt.expected {
-			t.Fatalf("truncate(%q, %d): expected %q, got %q", tt.input, tt.width, tt.expected, result)
-		}
-	}
-}
-
-func TestDelayLabel(t *testing.T) {
-	tests := []struct {
-		input    int
-		expected string
-	}{
-		{0, "--"},
-		{-1, "--"},
-		{42, "42ms"},
-		{149, "149ms"},
-		{299, "299ms"},
-		{300, "300ms"},
-	}
-
-	for _, tt := range tests {
-		result := delayLabel(theme.Light, tt.input)
-		// Check that it contains delay (color codes may be present)
-		if tt.input > 0 {
-			if !strings.Contains(result, "ms") {
-				t.Fatalf("delayLabel(theme.Light, %d): expected 'ms' in result, got %q", tt.input, result)
-			}
-		} else {
-			if result != "--" {
-				t.Fatalf("delayLabel(theme.Light, %d): expected '--', got %q", tt.input, result)
-			}
-		}
-	}
-}
-
 func TestWindow(t *testing.T) {
 	tests := []struct {
 		selected  int
@@ -964,26 +883,6 @@ func TestWindow(t *testing.T) {
 		if start != tt.wantStart || end != tt.wantEnd {
 			t.Fatalf("window(%d, %d, %d): expected (%d, %d), got (%d, %d)",
 				tt.selected, tt.total, tt.limit, tt.wantStart, tt.wantEnd, start, end)
-		}
-	}
-}
-
-func TestMax(t *testing.T) {
-	tests := []struct {
-		a, b     int
-		expected int
-	}{
-		{5, 3, 5},
-		{3, 5, 5},
-		{0, 0, 0},
-		{-1, 1, 1},
-		{42, 42, 42},
-	}
-
-	for _, tt := range tests {
-		result := max(tt.a, tt.b)
-		if result != tt.expected {
-			t.Fatalf("max(%d, %d): expected %d, got %d", tt.a, tt.b, tt.expected, result)
 		}
 	}
 }
@@ -1134,66 +1033,6 @@ func TestCalcGroupsMinWidth_OptionsMinWidth(t *testing.T) {
 	// Should be capped: columnContentWidth - minOptionsWidth = 100 - 30 = 70
 	if result > 70 {
 		t.Errorf("expected <= 70 (respecting Options min width), got %d", result)
-	}
-}
-
-func TestRebuildGroupsUpdatesGroupPanelWidth(t *testing.T) {
-	client := proxy.NewClient("http://localhost:9090", "")
-	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.width = 120
-	m.height = 32
-
-	// Before rebuildGroups: groupPanelWidth is 0
-	if m.groupPanelWidth != 0 {
-		t.Fatalf("expected initial groupPanelWidth 0, got %d", m.groupPanelWidth)
-	}
-
-	// Apply state with groups
-	m.applyState(refreshMsg{
-		proxies: proxy.ProxiesResponse{
-			Proxies: map[string]proxy.Proxy{
-				"GLOBAL": {
-					Name: "GLOBAL",
-					Type: "Selector",
-					Now:  "Node-A",
-					All:  []string{"Node-A", "Node-B"},
-				},
-			},
-		},
-		version:     proxy.Version{Version: "v1.0"},
-		config:      proxy.Config{Mode: "rule"},
-		traffic:     proxy.Traffic{},
-		connections: proxy.ConnectionsResponse{},
-	})
-
-	// groupPanelWidth should be non-zero after applyState -> rebuildGroups
-	if m.groupPanelWidth <= 0 {
-		t.Fatal("expected groupPanelWidth > 0 after rebuildGroups")
-	}
-
-	// groupPanelWidth should be at least minWidth (20)
-	if m.groupPanelWidth < 20 {
-		t.Fatalf("expected groupPanelWidth >= 20, got %d", m.groupPanelWidth)
-	}
-}
-
-func TestWindowSizeMsgUpdatesGroupPanelWidth(t *testing.T) {
-	client := proxy.NewClient("http://localhost:9090", "")
-	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
-	m.groups = []GroupView{
-		{Name: "Proxy", Current: "Node-A", Options: []OptionView{{Name: "Node-A", Selected: true}}},
-	}
-
-	// Simulate window resize
-	newModelResult, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	newM := newModelResult.(model)
-
-	if newM.width != 80 {
-		t.Fatalf("expected width 80, got %d", newM.width)
-	}
-	// After window resize, rebuildGroups should have updated groupPanelWidth
-	if newM.groupPanelWidth <= 0 {
-		t.Fatal("expected groupPanelWidth > 0 after window resize")
 	}
 }
 
@@ -1552,7 +1391,7 @@ func TestVisibleConnectionRows_CJKHostNameNoOverflow(t *testing.T) {
 	}
 }
 
-func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
+func TestCalcGroupsMinWidthChangesWithGroupNames(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
 	m.width = 200
@@ -1567,15 +1406,13 @@ func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
 	m.groups = []GroupView{
 		{Name: "A", Current: "", Options: []OptionView{{Name: "X"}}},
 	}
-	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
-	shortWidth := m.groupPanelWidth
+	shortWidth := m.calcGroupsMinWidth(columnContentWidth)
 
 	// Long names (35 chars + prefix + padding = ~39)
 	m.groups = []GroupView{
 		{Name: "VeryLongGroupNameThatNeedsMoreSpace", Current: "", Options: []OptionView{{Name: "X"}}},
 	}
-	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
-	longWidth := m.groupPanelWidth
+	longWidth := m.calcGroupsMinWidth(columnContentWidth)
 
 	t.Logf("short=%d, long=%d, columnContentWidth=%d", shortWidth, longWidth, columnContentWidth)
 
@@ -1584,7 +1421,7 @@ func TestGroupPanelWidthChangesWithGroupNames(t *testing.T) {
 	}
 }
 
-func TestGroupPanelWidthRespectsMax(t *testing.T) {
+func TestCalcGroupsMinWidthRespectsMax(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
 	m.width = 100
@@ -1598,12 +1435,12 @@ func TestGroupPanelWidthRespectsMax(t *testing.T) {
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	panelFrameWidth := panelBaseStyle(theme.Light).GetHorizontalFrameSize()
 	columnContentWidth := docWidth - 2 - panelFrameWidth*2
-	m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
+	groupWidth := m.calcGroupsMinWidth(columnContentWidth)
 
-	// groupPanelWidth should not exceed columnContentWidth - minOptionsWidth
+	// Group width should not exceed columnContentWidth - minOptionsWidth.
 	maxAllowed := columnContentWidth - 30
-	if m.groupPanelWidth > maxAllowed {
-		t.Errorf("groupPanelWidth should be capped at %d, got %d", maxAllowed, m.groupPanelWidth)
+	if groupWidth > maxAllowed {
+		t.Errorf("group width should be capped at %d, got %d", maxAllowed, groupWidth)
 	}
 }
 

@@ -16,14 +16,6 @@ type ProviderRule struct {
 	Raw     string
 }
 
-func ParseProviderRules(data []byte) ([]ProviderRule, error) {
-	lines, err := providerRuleLines(data)
-	if err != nil {
-		return nil, err
-	}
-	return parseClassicalRuleLines(lines)
-}
-
 func ParseProviderRulesForBehavior(data []byte, behavior string) ([]ProviderRule, error) {
 	lines, err := providerRuleLines(data)
 	if err != nil {

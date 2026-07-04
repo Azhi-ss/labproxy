@@ -31,11 +31,9 @@ func (m model) renderProxiesView(width, height int) string {
 const (
 	proxyStackWidth      = 72
 	proxyThreeColumnMin  = 126
-	proxyMaxBodyWidth    = 154
 	proxyMinGroupsWidth  = 20
 	proxyMaxGroupsWidth  = 34
 	proxyMinOptionsWidth = 36
-	proxyMaxOptionsWidth = 70
 	proxyMinDetailsWidth = 30
 	proxyMaxDetailsWidth = 42
 )
@@ -64,15 +62,13 @@ func (m model) renderProxiesStack(width, height int) string {
 }
 
 func (m model) proxyLayout(width, frameWidth int) proxyViewLayout {
-	bodyWidth := width
 	if width >= proxyThreeColumnMin {
-		bodyWidth = min(width, proxyMaxBodyWidth)
-		if layout, ok := m.proxyThreeColumnLayout(bodyWidth, frameWidth); ok {
+		if layout, ok := m.proxyThreeColumnLayout(width, frameWidth); ok {
 			return layout
 		}
 	}
 
-	columnContentWidth := max(0, bodyWidth-columnGap-frameWidth*2)
+	columnContentWidth := max(0, width-columnGap-frameWidth*2)
 	groupsWidth := min(m.calcGroupsMinWidth(columnContentWidth), columnContentWidth)
 	optionsWidth := max(0, columnContentWidth-groupsWidth)
 	return proxyViewLayout{
@@ -101,9 +97,6 @@ func (m model) proxyThreeColumnLayout(width, frameWidth int) (proxyViewLayout, b
 		optionsWidth = columnContentWidth - groupsWidth - detailsWidth
 	}
 
-	if optionsWidth > proxyMaxOptionsWidth {
-		optionsWidth = proxyMaxOptionsWidth
-	}
 	if optionsWidth < proxyMinOptionsWidth || detailsWidth < proxyMinDetailsWidth {
 		return proxyViewLayout{}, false
 	}
@@ -146,15 +139,6 @@ func (m *model) rebuildGroups() {
 		}
 	}
 
-	// Update cached adaptive layout width for Groups panel
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
-	panelFrameWidth := panelBaseStyle(m.theme).GetHorizontalFrameSize()
-	columnContentWidth := docWidth - columnGap - panelFrameWidth*2
-	if columnContentWidth > 0 {
-		m.groupPanelWidth = m.calcGroupsMinWidth(columnContentWidth)
-	} else {
-		m.groupPanelWidth = 20 // fallback: matches minGroupsWidth in calcGroupsMinWidth
-	}
 }
 
 func (m *model) clampIndices() {

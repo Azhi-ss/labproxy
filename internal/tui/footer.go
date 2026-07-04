@@ -20,17 +20,6 @@ func (m model) renderFooter() string {
 	return renderChromeLine(t, row, docWidth)
 }
 
-func (m model) focusLabel() string {
-	switch m.focus {
-	case focusGroups:
-		return T().FocusGroupsLabel
-	case focusConnections:
-		return T().NavConnections
-	default:
-		return T().FocusOptionsLabel
-	}
-}
-
 func (m model) footerKeyHint() string {
 	if currentLang == LangZh {
 		switch m.activeView {
