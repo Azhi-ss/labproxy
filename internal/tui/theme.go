@@ -48,12 +48,13 @@ func selectedStyle(t *theme.Theme) lipgloss.Style {
 		Background(t.SurfaceHigh)
 }
 
-func currentStyle(t *theme.Theme) lipgloss.Style {
+func inactiveSelectionStyle(t *theme.Theme) lipgloss.Style {
 	return lipgloss.NewStyle().
-		Foreground(t.Accent).Bold(true)
+		Bold(true).
+		Foreground(t.TextSecondary)
 }
 
-func navActiveStyle(t *theme.Theme) lipgloss.Style {
+func currentStyle(t *theme.Theme) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(t.Accent).Bold(true)
 }

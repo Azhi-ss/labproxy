@@ -14,8 +14,8 @@ type Dict struct {
 	AppTitle          string
 	PressSForSettings string
 
-		AppSubtitle string // 顶部副标题
-		HelpTitle   string
+	AppSubtitle string // 顶部副标题
+	HelpTitle   string
 	// Nav bar (viewID labels)
 	NavProxies     string
 	NavConnections string
@@ -43,6 +43,16 @@ type Dict struct {
 	CurrentFmt        string
 	NoSelectableNodes string
 
+	// Details panel
+	PanelDetails         string
+	DetailsGroupLabel    string
+	DetailsTypeLabel     string
+	DetailsCurrentLabel  string
+	DetailsNodeLabel     string
+	DetailsDelayLabel    string
+	DetailsActionApply   string
+	DetailsActionCurrent string
+
 	// Settings overlay
 	SettingsTitle        string
 	SettingsHint         string
@@ -67,27 +77,29 @@ type Dict struct {
 	SearchLabel string
 
 	// Status messages
-	StatusConnecting  string
-	StatusConnected   string
-	SearchCancelled   string
-	FilterNone        string
-	SettingsClosed    string
-	TypeToFilter      string
-	SettingsOpenHint  string
-	FocusOptions      string
-	FocusGroups       string
-	FocusGroupsLabel  string
-	FocusOptionsLabel string
-	FocusConnections  string
-	FilterLabelFmt    string
-	ConnCloseAllLabel string
-	ConnClosedFmt     string
-	TestGroupDoneFmt  string
-	LogOverlayTitle   string
-	LogOverlayHint    string
-	LogOverlayClosed  string
-	LogLevelFmt       string
-	LogWaiting        string
+	StatusConnecting    string
+	StatusConnected     string
+	SearchCancelled     string
+	FilterNone          string
+	SettingsClosed      string
+	TypeToFilter        string
+	SettingsOpenHint    string
+	FocusOptions        string
+	FocusGroups         string
+	FocusGroupsLabel    string
+	FocusOptionsLabel   string
+	FocusConnections    string
+	FilterLabelFmt      string
+	ConnCloseAllLabel   string
+	ConnCloseConfirmFmt string
+	ConnCloseAllConfirm string
+	ConnClosedFmt       string
+	TestGroupDoneFmt    string
+	LogOverlayTitle     string
+	LogOverlayHint      string
+	LogOverlayClosed    string
+	LogLevelFmt         string
+	LogWaiting          string
 
 	// Operation results
 	SwitchedFmt           string
@@ -140,8 +152,8 @@ var dicts = map[Language]Dict{
 		AppTitle:          "LabProxy",
 		PressSForSettings: "press 5 for config",
 
-		AppSubtitle:    "labproxy",
-		HelpTitle:      "Keybindings",
+		AppSubtitle: "labproxy",
+		HelpTitle:   "Keybindings",
 
 		NavProxies:     "Proxies",
 		NavConnections: "Connections",
@@ -166,6 +178,15 @@ var dicts = map[Language]Dict{
 		CurrentFmt:        "current %s",
 		NoSelectableNodes: "No selectable nodes in this group.",
 
+		PanelDetails:         "Details",
+		DetailsGroupLabel:    "Group",
+		DetailsTypeLabel:     "Type",
+		DetailsCurrentLabel:  "Current",
+		DetailsNodeLabel:     "Node",
+		DetailsDelayLabel:    "Delay",
+		DetailsActionApply:   "Enter switches to this node",
+		DetailsActionCurrent: "Current node",
+
 		SettingsTitle:        "\u2699 Settings",
 		SettingsHint:         "\u2191\u2193 move \u00b7 enter apply \u00b7 esc close",
 		SettingLabelMode:     "Mode",
@@ -186,27 +207,29 @@ var dicts = map[Language]Dict{
 		StatusReady: "ready",
 		SearchLabel: "Search:",
 
-		StatusConnecting:  "connecting\u2026",
-		StatusConnected:   "connected",
-		SearchCancelled:   "search cancelled",
-		FilterNone:        "none",
-		SettingsClosed:    "settings closed",
-		TypeToFilter:      "type to filter groups or proxies",
-		SettingsOpenHint:  "settings \u2014 enter apply \u00b7 esc close",
-		FocusOptions:      "focus: options",
-		FocusGroups:       "focus: groups",
-		FocusGroupsLabel:  "groups",
-		FocusOptionsLabel: "options",
-		FocusConnections:  "focus: connections · d close · D close all",
-		FilterLabelFmt:    "filter: %s",
-		ConnCloseAllLabel: "all",
-		ConnClosedFmt:     "closed connection: %s",
-		TestGroupDoneFmt:  "tested group: %s",
-		LogOverlayTitle:   "Logs [level: %s] — esc to close, l to change level",
-		LogOverlayHint:    "logs — esc close · l level",
-		LogOverlayClosed:  "logs closed",
-		LogLevelFmt:       "log level: %s",
-		LogWaiting:        "waiting for logs…",
+		StatusConnecting:    "connecting\u2026",
+		StatusConnected:     "connected",
+		SearchCancelled:     "search cancelled",
+		FilterNone:          "none",
+		SettingsClosed:      "settings closed",
+		TypeToFilter:        "type to filter groups or proxies",
+		SettingsOpenHint:    "settings \u2014 enter apply \u00b7 esc close",
+		FocusOptions:        "focus: options",
+		FocusGroups:         "focus: groups",
+		FocusGroupsLabel:    "groups",
+		FocusOptionsLabel:   "options",
+		FocusConnections:    "focus: connections · d close · D close all",
+		FilterLabelFmt:      "filter: %s",
+		ConnCloseAllLabel:   "all",
+		ConnCloseConfirmFmt: "! close %s: press d again",
+		ConnCloseAllConfirm: "! close all connections: press D again",
+		ConnClosedFmt:       "closed connection: %s",
+		TestGroupDoneFmt:    "tested group: %s",
+		LogOverlayTitle:     "Logs [level: %s] — esc to close, l to change level",
+		LogOverlayHint:      "logs — esc close · l level",
+		LogOverlayClosed:    "logs closed",
+		LogLevelFmt:         "log level: %s",
+		LogWaiting:          "waiting for logs…",
 
 		SwitchedFmt:           "switched %s \u2192 %s",
 		ModeToFmt:             "mode \u2192 %s",
@@ -251,8 +274,8 @@ var dicts = map[Language]Dict{
 		AppTitle:          "LabProxy",
 		PressSForSettings: "\u6309 5 \u6253\u5f00\u914d\u7f6e",
 
-		AppSubtitle:    "labproxy",
-		HelpTitle:      "\u5feb\u6377\u952e",
+		AppSubtitle: "labproxy",
+		HelpTitle:   "\u5feb\u6377\u952e",
 
 		NavProxies:     "\u4ee3\u7406",
 		NavConnections: "\u8fde\u63a5",
@@ -277,6 +300,15 @@ var dicts = map[Language]Dict{
 		CurrentFmt:        "\u5f53\u524d: %s",
 		NoSelectableNodes: "\u8be5\u7ec4\u65e0\u53ef\u9009\u8282\u70b9",
 
+		PanelDetails:         "\u8be6\u60c5",
+		DetailsGroupLabel:    "\u4ee3\u7406\u7ec4",
+		DetailsTypeLabel:     "\u7c7b\u578b",
+		DetailsCurrentLabel:  "\u5f53\u524d",
+		DetailsNodeLabel:     "\u8282\u70b9",
+		DetailsDelayLabel:    "\u5ef6\u8fdf",
+		DetailsActionApply:   "\u56de\u8f66\u5207\u6362\u5230\u6b64\u8282\u70b9",
+		DetailsActionCurrent: "\u5f53\u524d\u8282\u70b9",
+
 		SettingsTitle:        "\u2699 \u8bbe\u7f6e",
 		SettingsHint:         "\u2191\u2193 \u79fb\u52a8 \u00b7 \u56de\u8f66\u786e\u8ba4 \u00b7 esc \u5173\u95ed",
 		SettingLabelMode:     "\u6a21\u5f0f",
@@ -297,27 +329,29 @@ var dicts = map[Language]Dict{
 		StatusReady: "\u5c31\u7eea",
 		SearchLabel: "\u641c\u7d22:",
 
-		StatusConnecting:  "\u8fde\u63a5\u4e2d\u2026",
-		StatusConnected:   "\u5df2\u8fde\u63a5",
-		SearchCancelled:   "\u641c\u7d22\u5df2\u53d6\u6d88",
-		FilterNone:        "\u65e0",
-		SettingsClosed:    "\u8bbe\u7f6e\u5df2\u5173\u95ed",
-		TypeToFilter:      "\u8f93\u5165\u4ee5\u8fc7\u6ee4\u4ee3\u7406\u7ec4\u6216\u8282\u70b9",
-		SettingsOpenHint:  "\u8bbe\u7f6e \u2014 \u56de\u8f66\u786e\u8ba4 \u00b7 esc \u5173\u95ed",
-		FocusOptions:      "\u7126\u70b9: \u5019\u9009\u8282\u70b9",
-		FocusGroups:       "\u7126\u70b9: \u4ee3\u7406\u7ec4",
-		FocusGroupsLabel:  "\u4ee3\u7406\u7ec4",
-		FocusOptionsLabel: "\u5019\u9009\u8282\u70b9",
-		FocusConnections:  "\u7126\u70b9: \u8fde\u63a5 \u00b7 d \u5173\u95ed \u00b7 D \u5168\u90e8\u5173\u95ed",
-		ConnCloseAllLabel: "\u5168\u90e8",
-		ConnClosedFmt:     "\u5df2\u5173\u95ed\u8fde\u63a5: %s",
-		TestGroupDoneFmt:  "\u5df2\u6d4b\u901f\u7ec4: %s",
-		LogOverlayTitle:   "\u65e5\u5fd7 [\u7ea7\u522b: %s] \u2014 esc \u5173\u95ed\uff0cl \u5207\u6362\u7ea7\u522b",
-		LogOverlayHint:    "\u65e5\u5fd7 \u2014 esc \u5173\u95ed \u00b7 l \u7ea7\u522b",
-		LogOverlayClosed:  "\u65e5\u5fd7\u5df2\u5173\u95ed",
-		LogLevelFmt:       "\u65e5\u5fd7\u7ea7\u522b: %s",
-		LogWaiting:        "\u7b49\u5f85\u65e5\u5fd7\u2026",
-		FilterLabelFmt:    "\u8fc7\u6ee4: %s",
+		StatusConnecting:    "\u8fde\u63a5\u4e2d\u2026",
+		StatusConnected:     "\u5df2\u8fde\u63a5",
+		SearchCancelled:     "\u641c\u7d22\u5df2\u53d6\u6d88",
+		FilterNone:          "\u65e0",
+		SettingsClosed:      "\u8bbe\u7f6e\u5df2\u5173\u95ed",
+		TypeToFilter:        "\u8f93\u5165\u4ee5\u8fc7\u6ee4\u4ee3\u7406\u7ec4\u6216\u8282\u70b9",
+		SettingsOpenHint:    "\u8bbe\u7f6e \u2014 \u56de\u8f66\u786e\u8ba4 \u00b7 esc \u5173\u95ed",
+		FocusOptions:        "\u7126\u70b9: \u5019\u9009\u8282\u70b9",
+		FocusGroups:         "\u7126\u70b9: \u4ee3\u7406\u7ec4",
+		FocusGroupsLabel:    "\u4ee3\u7406\u7ec4",
+		FocusOptionsLabel:   "\u5019\u9009\u8282\u70b9",
+		FocusConnections:    "\u7126\u70b9: \u8fde\u63a5 \u00b7 d \u5173\u95ed \u00b7 D \u5168\u90e8\u5173\u95ed",
+		ConnCloseAllLabel:   "\u5168\u90e8",
+		ConnCloseConfirmFmt: "! \u5173\u95ed %s\uff1a\u518d\u6309 d \u786e\u8ba4",
+		ConnCloseAllConfirm: "! \u5173\u95ed\u5168\u90e8\u8fde\u63a5\uff1a\u518d\u6309 D \u786e\u8ba4",
+		ConnClosedFmt:       "\u5df2\u5173\u95ed\u8fde\u63a5: %s",
+		TestGroupDoneFmt:    "\u5df2\u6d4b\u901f\u7ec4: %s",
+		LogOverlayTitle:     "\u65e5\u5fd7 [\u7ea7\u522b: %s] \u2014 esc \u5173\u95ed\uff0cl \u5207\u6362\u7ea7\u522b",
+		LogOverlayHint:      "\u65e5\u5fd7 \u2014 esc \u5173\u95ed \u00b7 l \u7ea7\u522b",
+		LogOverlayClosed:    "\u65e5\u5fd7\u5df2\u5173\u95ed",
+		LogLevelFmt:         "\u65e5\u5fd7\u7ea7\u522b: %s",
+		LogWaiting:          "\u7b49\u5f85\u65e5\u5fd7\u2026",
+		FilterLabelFmt:      "\u8fc7\u6ee4: %s",
 
 		SwitchedFmt:           "\u5df2\u5207\u6362 %s \u2192 %s",
 		ModeToFmt:             "\u6a21\u5f0f \u2192 %s",

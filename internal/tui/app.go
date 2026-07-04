@@ -138,7 +138,7 @@ type model struct {
 	activeView    viewID
 	groupIndex    int
 	optionIndex   int
-		settingsIndex int
+	settingsIndex int
 
 	connIndex        int    // 连接面板选中行
 	connConfirmClose string // 待确认关闭的目标（连接 id 或 "all"），空=无待确认
@@ -188,9 +188,9 @@ func newModel(client *proxy.Client, opts Options) model {
 		width:              120,
 		height:             32,
 		search:             search,
-		statusLine: T().StatusConnecting,
-		rulesModal: opts.RulesModal,
-		keys:       defaultKeyMap(),
+		statusLine:         T().StatusConnecting,
+		rulesModal:         opts.RulesModal,
+		keys:               defaultKeyMap(),
 	}
 }
 
@@ -241,11 +241,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = msg.status
 		m.lastError = nil
 		m.activeView = viewProxies
+		m.ensureFocusForView()
 		return m, nil
 	case errMsg:
 		m.lastError = msg.err
 		m.statusLine = msg.err.Error()
 		m.activeView = viewProxies
+		m.ensureFocusForView()
 		return m, nil
 	case configFlagsMsg:
 		m.systemProxyEnabled = msg.systemProxyEnabled
@@ -254,6 +256,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = msg.status
 		m.lastError = nil
 		m.activeView = viewProxies
+		m.ensureFocusForView()
 		return m, nil
 	case tea.KeyMsg:
 		// ? 帮助浮层（最高优先级，输入态时不拦截）
@@ -262,62 +265,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// 全局视图切换：1-5 直达，Tab 循环。输入态时不拦截。
+		// 代理页内 Tab 只切换 pane 焦点；视图切换保留给 1-5，避免和面板提示冲突。
+		if !m.searchMode && m.activeView == viewProxies && key.Matches(msg, m.keys.Tab) {
+			m.moveFocus(1)
+			return m, nil
+		}
+
+		// 全局视图切换：1-5 直达；非代理页 Tab 循环。输入态时不拦截。
 		if !m.searchMode && m.activeView != viewConfig {
 			if v, ok := viewByDigit(string(msg.Runes)); ok && msg.Type == tea.KeyRunes {
-				// 切离 viewLogs：停止订阅
-				if m.activeView == viewLogs && v != viewLogs && m.logCancel != nil {
-					m.logCancel()
-					m.logActive = false
-				}
-				// 切离 viewRules：关闭 rules modal
-				if m.activeView == viewRules && v != viewRules && m.rulesModal != nil {
-					m.rulesModal.Close()
-				}
-				m.activeView = v
-				m.statusLine = v.label()
-				// 切到 viewLogs：启动订阅
-				if v == viewLogs && !m.logActive {
-					m.logActive = true
-					if m.logLevel == "" {
-						m.logLevel = "info"
-					}
-					ctx, cancel := context.WithCancel(context.Background())
-					m.logCancel = cancel
-					m.logCtx = ctx
-					return m, tea.Batch(m.logsCmd(ctx))
-				}
-				// 切到 viewRules：打开 rules modal
-				if v == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
-					m.rulesModal.Open()
-				}
-				return m, nil
+				return m.switchView(v)
 			}
 			if key.Matches(msg, m.keys.Tab) {
-				next := m.activeView.next()
-				if m.activeView == viewLogs && next != viewLogs && m.logCancel != nil {
-					m.logCancel()
-					m.logActive = false
-				}
-				if m.activeView == viewRules && next != viewRules && m.rulesModal != nil {
-					m.rulesModal.Close()
-				}
-				m.activeView = next
-				m.statusLine = next.label()
-				if next == viewLogs && !m.logActive {
-					m.logActive = true
-					if m.logLevel == "" {
-						m.logLevel = "info"
-					}
-					ctx, cancel := context.WithCancel(context.Background())
-					m.logCancel = cancel
-					m.logCtx = ctx
-					return m, tea.Batch(m.logsCmd(ctx))
-				}
-				if next == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
-					m.rulesModal.Open()
-				}
-				return m, nil
+				return m.switchView(m.activeView.next())
 			}
 		}
 
@@ -357,7 +317,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// 连接面板断连快捷键：仅当焦点在连接面板时生效。
 		// d → 关闭当前选中连接（首次进入待确认，再次确认）；D → 关闭全部（同理）。
-		if m.focus == focusConnections {
+		if m.activeView == viewConnections && m.focus == focusConnections {
 			if handled, mm, mcmd := m.handleConnectionCloseKey(msg); handled {
 				return mm, mcmd
 			}
@@ -368,6 +328,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch {
 			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Back):
 				m.activeView = viewProxies
+				m.ensureFocusForView()
 				m.statusLine = T().SettingsClosed
 				return m, nil
 			case key.Matches(msg, m.keys.Up):
@@ -385,6 +346,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case key.Matches(msg, m.keys.Select):
 				return m, m.activateSettingCmd()
+			case key.Matches(msg, m.keys.Mode):
+				return m, m.cycleModeCmd()
+			case key.Matches(msg, m.keys.SystemProxy):
+				return m, m.toggleSystemProxyCmd()
 			default:
 				return m, nil
 			}
@@ -395,10 +360,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.search.Focus()
 			m.statusLine = T().TypeToFilter
 			return m, nil
-		case key.Matches(msg, m.keys.Mode):
-			return m, m.cycleModeCmd()
-		case key.Matches(msg, m.keys.SystemProxy):
-			return m, m.toggleSystemProxyCmd()
 		case m.activeView == viewProxies && key.Matches(msg, m.keys.Left):
 			m.moveFocus(-1)
 			return m, nil
@@ -425,7 +386,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.delayRefreshCmd()
 		case m.activeView == viewProxies && key.Matches(msg, m.keys.TestGroup):
 			return m, m.testGroupCmd()
-		case key.Matches(msg, m.keys.Select):
+		case m.activeView == viewProxies && key.Matches(msg, m.keys.Select):
 			switch m.focus {
 			case focusGroups:
 				m.focus = focusOptions
@@ -440,6 +401,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) switchView(v viewID) (tea.Model, tea.Cmd) {
+	if m.activeView == viewLogs && v != viewLogs && m.logCancel != nil {
+		m.logCancel()
+		m.logActive = false
+	}
+	if m.activeView == viewRules && v != viewRules && m.rulesModal != nil {
+		m.rulesModal.Close()
+	}
+
+	m.activeView = v
+	m.ensureFocusForView()
+	m.statusLine = v.label()
+
+	if v == viewLogs && !m.logActive {
+		m.logActive = true
+		if m.logLevel == "" {
+			m.logLevel = "info"
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		m.logCancel = cancel
+		m.logCtx = ctx
+		return m, tea.Batch(m.logsCmd(ctx))
+	}
+	if v == viewRules && m.rulesModal != nil && !m.rulesModal.IsOpen() {
+		m.rulesModal.Open()
+	}
+	return m, nil
+}
+
+func (m *model) ensureFocusForView() {
+	switch m.activeView {
+	case viewConnections:
+		m.focus = focusConnections
+	default:
+		if m.focus == focusConnections {
+			m.focus = focusGroups
+		}
+	}
+}
+
 func (m model) View() string {
 	if m.width <= 0 {
 		return T().Loading
@@ -450,10 +451,11 @@ func (m model) View() string {
 	}
 
 	header := m.renderHeader()
+	tabs := m.renderTabs()
 	footer := m.renderFooter()
-	availableBodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
+	availableBodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(tabs) - lipgloss.Height(footer)
 	body := m.renderBody(availableBodyHeight)
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, body, footer)
 }
 
 func (m *model) applyState(state refreshMsg) {
@@ -489,7 +491,7 @@ func (m *model) applyTestGroupResult(msg testGroupResultMsg) {
 }
 
 func (m *model) moveFocus(delta int) {
-	order := []paneFocus{focusGroups, focusOptions, focusConnections}
+	order := []paneFocus{focusGroups, focusOptions}
 	current := 0
 	for idx, focus := range order {
 		if m.focus == focus {
@@ -684,29 +686,23 @@ func tickCmd() tea.Cmd {
 }
 
 func (m model) renderBody(availableHeight int) string {
-	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	docWidth := m.docWidth()
 	if availableHeight <= 0 || docWidth <= 0 {
 		return docStyle.Width(docWidth).Render("")
 	}
 
-	navWidth := 14 + panelBaseStyle(m.theme).GetHorizontalFrameSize()
-	nav := renderNav(m.theme, m.activeView, availableHeight)
-	contentWidth := max(0, docWidth-navWidth-1)
-
-	var rest string
 	switch m.activeView {
 	case viewProxies:
-		rest = m.renderProxiesView(contentWidth, availableHeight)
+		return m.renderProxiesView(docWidth, availableHeight)
 	case viewConnections:
-		rest = m.renderConnectionsView(contentWidth, availableHeight)
+		return m.renderConnectionsView(docWidth, availableHeight)
 	case viewLogs:
-		rest = m.renderLogsView(contentWidth, availableHeight)
+		return m.renderLogsView(docWidth, availableHeight)
 	case viewRules:
-		rest = m.renderRulesView(contentWidth, availableHeight)
+		return m.renderRulesView(docWidth, availableHeight)
 	case viewConfig:
-		rest = m.renderConfigView(contentWidth, availableHeight)
+		return m.renderConfigView(docWidth, availableHeight)
 	default:
-		rest = m.renderProxiesView(contentWidth, availableHeight)
+		return m.renderProxiesView(docWidth, availableHeight)
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Left, nav, " ", rest)
 }

@@ -73,7 +73,7 @@ func (m model) handleConnectionCloseKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cm
 	// 首次按 d/D 进入待确认
 	if isCloseAll {
 		m.connConfirmClose = "all"
-		m.statusLine = T().ConnCloseAllLabel + " — press D again to confirm"
+		m.statusLine = T().ConnCloseAllConfirm
 		return true, m, nil
 	}
 	if isClose {
@@ -84,7 +84,7 @@ func (m model) handleConnectionCloseKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cm
 		m.clampConnIndex()
 		target := conns[m.connIndex].ID
 		m.connConfirmClose = target
-		m.statusLine = target + " — press d again to confirm"
+		m.statusLine = fmt.Sprintf(T().ConnCloseConfirmFmt, target)
 		return true, m, nil
 	}
 	return false, m, nil

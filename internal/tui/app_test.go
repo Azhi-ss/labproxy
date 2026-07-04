@@ -218,6 +218,7 @@ func TestUpdate_KeyMsg_Tab(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
 	m.activeView = viewProxies
+	m.focus = focusGroups
 
 	msg := tea.KeyMsg{Type: tea.KeyTab}
 	newModel, cmd := m.Update(msg)
@@ -226,8 +227,59 @@ func TestUpdate_KeyMsg_Tab(t *testing.T) {
 		t.Fatal("expected nil command for tab key")
 	}
 	newM := newModel.(model)
-	if newM.activeView != viewConnections {
-		t.Fatalf("expected activeView to cycle to connections, got %d", newM.activeView)
+	if newM.activeView != viewProxies {
+		t.Fatalf("expected tab on proxies to keep proxies view, got %d", newM.activeView)
+	}
+	if newM.focus != focusOptions {
+		t.Fatalf("expected tab on proxies to focus options, got %d", newM.focus)
+	}
+}
+
+func TestUpdate_KeyMsg_TabOutsideProxiesCyclesView(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.activeView = viewRules
+	m.focus = focusConnections
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if cmd != nil {
+		t.Fatal("expected nil command for tab key")
+	}
+	newM := newModel.(model)
+	if newM.activeView != viewConfig {
+		t.Fatalf("expected tab outside proxies to cycle to config, got %d", newM.activeView)
+	}
+	if newM.focus == focusConnections {
+		t.Fatal("expected leaving connections to clear connection focus")
+	}
+}
+
+func TestUpdate_KeyMsg_DigitSwitchSetsViewFocus(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if cmd != nil {
+		t.Fatal("expected nil command for connections digit")
+	}
+	m2 := next.(model)
+	if m2.activeView != viewConnections {
+		t.Fatalf("expected digit 2 to switch to connections, got %d", m2.activeView)
+	}
+	if m2.focus != focusConnections {
+		t.Fatalf("expected connections view to own connection focus, got %d", m2.focus)
+	}
+
+	next, cmd = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if cmd != nil {
+		t.Fatal("expected nil command for proxies digit")
+	}
+	m3 := next.(model)
+	if m3.activeView != viewProxies {
+		t.Fatalf("expected digit 1 to switch to proxies, got %d", m3.activeView)
+	}
+	if m3.focus == focusConnections {
+		t.Fatal("expected proxies view to clear connection focus")
 	}
 }
 
@@ -258,24 +310,14 @@ func TestUpdate_KeyMsg_LeftRight(t *testing.T) {
 		t.Fatalf("expected focus to be options after right key, got %d", newM.focus)
 	}
 
-	// Right key again moves to connections (three-pane focus cycle)
+	// Right key again wraps back to groups inside the proxies view.
 	newModel, cmd = newModel.Update(msgRight)
 	if cmd != nil {
 		t.Fatal("expected nil command for right key")
 	}
 	newM = newModel.(model)
-	if newM.focus != focusConnections {
-		t.Fatalf("expected focus to be connections after second right key, got %d", newM.focus)
-	}
-
-	// Right key again wraps back to groups
-	newModel, cmd = newModel.Update(msgRight)
-	if cmd != nil {
-		t.Fatal("expected nil command for right key wrap")
-	}
-	newM = newModel.(model)
 	if newM.focus != focusGroups {
-		t.Fatalf("expected focus to wrap to groups after third right key, got %d", newM.focus)
+		t.Fatalf("expected focus to wrap to groups after second right key, got %d", newM.focus)
 	}
 }
 
@@ -350,6 +392,7 @@ func TestUpdate_KeyMsg_SystemProxy(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
+	m.activeView = viewConfig
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
 	_, cmd := m.Update(msg)
@@ -372,6 +415,21 @@ func TestUpdate_KeyMsg_SystemProxy(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "enable: true") {
 		t.Fatalf("expected mixin to persist system proxy=true, got %q", string(content))
+	}
+}
+
+func TestUpdate_KeyMsg_SystemProxyIgnoredOutsideConfig(t *testing.T) {
+	client := proxy.NewClient("http://localhost:9090", "")
+	mixinPath := filepath.Join(t.TempDir(), "mixin.yaml")
+	m := newModel(client, Options{Endpoint: "http://localhost:9090", MixinConfigPath: mixinPath})
+	m.activeView = viewProxies
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if cmd != nil {
+		t.Fatal("expected no command for system proxy key outside config view")
+	}
+	if _, err := os.Stat(mixinPath); !os.IsNotExist(err) {
+		t.Fatalf("expected mixin to remain untouched, stat err=%v", err)
 	}
 }
 
@@ -611,14 +669,15 @@ func TestView_SettingsOverlay(t *testing.T) {
 func TestView_SmallHeightHidesConnections(t *testing.T) {
 	m := newLayoutTestModel()
 	headerHeight := lipgloss.Height(m.renderHeader())
+	tabsHeight := lipgloss.Height(m.renderTabs())
 	footerHeight := lipgloss.Height(m.renderFooter())
-	m.height = headerHeight + footerHeight + 5
+	m.height = headerHeight + tabsHeight + footerHeight + 5
 
 	view := m.View()
 	if !strings.Contains(view, "Groups") || !strings.Contains(view, "Options") {
 		t.Fatal("expected compact body to keep two top panels")
 	}
-	// Nav bar always shows "Connections" label; check panel-specific content instead.
+	// Top tabs always show navigation labels; check panel-specific content instead.
 	if strings.Contains(view, "active") {
 		t.Fatal("expected connections panel to be hidden in small height")
 	}
@@ -627,15 +686,44 @@ func TestView_SmallHeightHidesConnections(t *testing.T) {
 func TestView_TinyHeightHidesBody(t *testing.T) {
 	m := newLayoutTestModel()
 	headerHeight := lipgloss.Height(m.renderHeader())
+	tabsHeight := lipgloss.Height(m.renderTabs())
 	footerHeight := lipgloss.Height(m.renderFooter())
-	m.height = headerHeight + footerHeight
+	m.height = headerHeight + tabsHeight + footerHeight
 
 	view := m.View()
 	if !strings.Contains(view, "connected") {
 		t.Fatal("expected header/footer content to remain visible")
 	}
-	if strings.Contains(view, "Groups") || strings.Contains(view, "Connections") {
+	clean := ansi.Strip(view)
+	if strings.Contains(clean, T().PanelGroups) || strings.Contains(clean, T().PanelOptions) {
 		t.Fatal("expected body panels to be hidden when no vertical space remains")
+	}
+}
+
+func TestRenderFooterSingleLine(t *testing.T) {
+	m := newLayoutTestModel()
+	footer := m.renderFooter()
+	if got := lipgloss.Height(footer); got != 1 {
+		t.Fatalf("footer height = %d, want 1", got)
+	}
+}
+
+func TestFooterKeyHint_ProxiesMatchesBindings(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.activeView = viewProxies
+	hint := m.footerKeyHint()
+	if !strings.Contains(hint, "T测速") {
+		t.Fatalf("expected footer to show uppercase T test binding, got %q", hint)
+	}
+	if !strings.Contains(hint, "enter进入/切换") {
+		t.Fatalf("expected footer to describe enter focus/switch behavior, got %q", hint)
+	}
+	if strings.Contains(hint, "t测速") {
+		t.Fatalf("footer should not advertise lowercase t, got %q", hint)
 	}
 }
 
@@ -662,12 +750,7 @@ func TestToggleFocus(t *testing.T) {
 		t.Fatalf("expected status line 'focus: options', got %q", m.statusLine)
 	}
 
-	// 三焦点循环：groups → options → connections → groups
-	m.moveFocus(1)
-	if m.focus != focusConnections {
-		t.Fatalf("expected focus to be connections, got %d", m.focus)
-	}
-
+	// 代理页只在 groups/options 两个 pane 之间循环；connections 是独立视图。
 	m.moveFocus(1)
 	if m.focus != focusGroups {
 		t.Fatalf("expected focus to cycle back to groups, got %d", m.focus)
@@ -1162,6 +1245,39 @@ func TestRenderBody_NarrowTerminal(t *testing.T) {
 	}
 }
 
+func TestRenderBody_WideProxiesShowsDetailsPanel(t *testing.T) {
+	m := newLayoutTestModel()
+	m.width = 180
+	m.height = 32
+	m.rebuildGroups()
+
+	body := m.renderBody(24)
+	clean := ansi.Strip(body)
+	if !strings.Contains(clean, T().PanelDetails) {
+		t.Fatalf("expected wide proxies layout to include details panel, got %q", clean)
+	}
+	if !strings.Contains(clean, T().PanelOptions) {
+		t.Fatalf("expected wide proxies layout to keep options panel, got %q", clean)
+	}
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	assertMaxVisualWidth(t, body, docWidth)
+}
+
+func TestRenderBody_VeryNarrowProxiesStacksPanels(t *testing.T) {
+	m := newLayoutTestModel()
+	m.width = 60
+	m.height = 20
+	m.rebuildGroups()
+
+	body := m.renderBody(12)
+	clean := ansi.Strip(body)
+	if !strings.Contains(clean, T().PanelGroups) || !strings.Contains(clean, T().PanelOptions) {
+		t.Fatalf("expected narrow proxies layout to stack groups and options, got %q", clean)
+	}
+	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
+	assertMaxVisualWidth(t, body, docWidth)
+}
+
 func TestRenderBody_NarrowTerminalNeverExceedsContentWidth(t *testing.T) {
 	m := newLayoutTestModel()
 	m.width = 34
@@ -1179,6 +1295,36 @@ func TestRenderBody_NarrowTerminalNeverExceedsContentWidth(t *testing.T) {
 	body := m.renderBody(10)
 	docWidth := max(0, m.width-docStyle.GetHorizontalFrameSize())
 	assertMaxVisualWidth(t, body, docWidth)
+}
+
+func TestVisibleDetailsRows_FitsLongCJKValues(t *testing.T) {
+	previousLang := currentLang
+	SetLanguage(LangZh)
+	t.Cleanup(func() { SetLanguage(previousLang) })
+
+	m := newLayoutTestModel()
+	m.groups = []GroupView{{
+		Name:    "手动选择超长代理组",
+		Type:    "Selector",
+		Current: "日本节点-低延迟-东京-长名称",
+		Options: []OptionView{{
+			Name:     "日本节点-低延迟-东京-长名称",
+			Selected: true,
+			DelayMS:  42,
+		}},
+	}}
+	m.groupIndex = 0
+	m.optionIndex = 0
+
+	rows := m.visibleDetailsRows(18)
+	if len(rows) == 0 {
+		t.Fatal("expected detail rows")
+	}
+	for _, row := range rows {
+		if got := ansi.StringWidth(row); got > 18 {
+			t.Fatalf("detail row width = %d, want <= 18: %q", got, row)
+		}
+	}
 }
 
 func TestVisibleSettingRows_CJKContentFitsWidth(t *testing.T) {
@@ -1216,6 +1362,33 @@ func TestVisibleGroupRows_LongCJKCurrentFitsWidth(t *testing.T) {
 	}
 	if got := ansi.StringWidth(rows[0]); got > width {
 		t.Fatalf("group row width = %d, want <= %d: %q", got, width, rows[0])
+	}
+}
+
+func TestVisibleGroupRows_DistinguishesFocusedAndInactiveSelection(t *testing.T) {
+	m := newLayoutTestModel()
+	m.groups = []GroupView{{
+		Name:    "GLOBAL",
+		Current: "Node-A",
+		Options: []OptionView{{Name: "Node-A", Selected: true}},
+	}}
+
+	m.focus = focusGroups
+	rows := m.visibleGroupRows(30, 1)
+	if len(rows) != 1 {
+		t.Fatalf("expected one focused row, got %d", len(rows))
+	}
+	if got := ansi.Strip(rows[0]); !strings.HasPrefix(got, "▸ GLOBAL") {
+		t.Fatalf("expected focused group row cursor, got %q", got)
+	}
+
+	m.focus = focusOptions
+	rows = m.visibleGroupRows(30, 1)
+	if len(rows) != 1 {
+		t.Fatalf("expected one inactive row, got %d", len(rows))
+	}
+	if got := ansi.Strip(rows[0]); !strings.HasPrefix(got, "• GLOBAL") {
+		t.Fatalf("expected inactive selected group marker, got %q", got)
 	}
 }
 
@@ -1463,6 +1636,7 @@ func TestUpdate_CloseConnectionKeyDown(t *testing.T) {
 
 	client := proxy.NewClient(srv.URL, "")
 	m := newModel(client, Options{Endpoint: srv.URL})
+	m.activeView = viewConnections
 	m.focus = focusConnections
 	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
 	m.connIndex = 0
@@ -1472,6 +1646,9 @@ func TestUpdate_CloseConnectionKeyDown(t *testing.T) {
 	um := updated.(model)
 	if um.connConfirmClose != "conn-1" {
 		t.Fatalf("expected connConfirmClose=conn-1 after first d, got %q", um.connConfirmClose)
+	}
+	if um.statusLine != "! close conn-1: press d again" {
+		t.Fatalf("expected localized confirm status, got %q", um.statusLine)
 	}
 
 	// 第二次按 d（确认）：应触发 close 命令
@@ -1522,6 +1699,7 @@ func TestUpdate_CloseAllConnectionsKey(t *testing.T) {
 
 	client := proxy.NewClient(srv.URL, "")
 	m := newModel(client, Options{Endpoint: srv.URL})
+	m.activeView = viewConnections
 	m.focus = focusConnections
 	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
 
@@ -1530,6 +1708,9 @@ func TestUpdate_CloseAllConnectionsKey(t *testing.T) {
 	um := updated.(model)
 	if um.connConfirmClose != "all" {
 		t.Fatalf("expected connConfirmClose=all after D, got %q", um.connConfirmClose)
+	}
+	if um.statusLine != "! close all connections: press D again" {
+		t.Fatalf("expected localized close-all confirm status, got %q", um.statusLine)
 	}
 
 	// 确认
@@ -1549,6 +1730,7 @@ func TestUpdate_CloseAllConnectionsKey(t *testing.T) {
 func TestUpdate_CloseConnectionCancel(t *testing.T) {
 	client := proxy.NewClient("http://localhost:9090", "")
 	m := newModel(client, Options{Endpoint: "http://localhost:9090"})
+	m.activeView = viewConnections
 	m.focus = focusConnections
 	m.connConfirmClose = "conn-1"
 
@@ -1568,6 +1750,7 @@ func TestUpdate_CloseConnectionOnlyWhenFocused(t *testing.T) {
 
 	client := proxy.NewClient(srv.URL, "")
 	m := newModel(client, Options{Endpoint: srv.URL})
+	m.activeView = viewConnections
 	m.focus = focusGroups // 非连接焦点
 	m.connections = proxy.ConnectionsResponse{Connections: []proxy.Connection{{ID: "conn-1"}}}
 

@@ -25,37 +25,36 @@ type Theme struct {
 	Info    lipgloss.AdaptiveColor
 }
 
-// Light 是浅色终端背景主题。
-// 所有文字色在 #EEEEEE 背景上 WCAG AA 对比度 ≥ 4.5:1（TextMuted ≥ 4.5:1）。
+// Light 是浅色终端背景主题，使用偏中性的 slate/blue palette，避免大面积淡紫选中态。
 var Light = &Theme{
-	Bg:            lipgloss.AdaptiveColor{Light: "255", Dark: "234"},
-	Surface:       lipgloss.AdaptiveColor{Light: "254", Dark: "235"},
-	SurfaceHigh:   lipgloss.AdaptiveColor{Light: "189", Dark: "236"},
-	TextPrimary:   lipgloss.AdaptiveColor{Light: "234", Dark: "255"},
-	TextSecondary: lipgloss.AdaptiveColor{Light: "239", Dark: "145"},
-	TextMuted:     lipgloss.AdaptiveColor{Light: "240", Dark: "242"},
-	Accent:        lipgloss.AdaptiveColor{Light: "25", Dark: "75"},
-	Success:       lipgloss.AdaptiveColor{Light: "22", Dark: "42"},
-	Warning:       lipgloss.AdaptiveColor{Light: "130", Dark: "220"},
-	Danger:        lipgloss.AdaptiveColor{Light: "160", Dark: "203"},
-	Orange:        lipgloss.AdaptiveColor{Light: "166", Dark: "214"},
-	Info:          lipgloss.AdaptiveColor{Light: "25", Dark: "75"},
+	Bg:            lipgloss.AdaptiveColor{Light: "#F8FAFC", Dark: "#0F172A"},
+	Surface:       lipgloss.AdaptiveColor{Light: "#F1F5F9", Dark: "#111827"},
+	SurfaceHigh:   lipgloss.AdaptiveColor{Light: "#DBEAFE", Dark: "#1E3A5F"},
+	TextPrimary:   lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#E5E7EB"},
+	TextSecondary: lipgloss.AdaptiveColor{Light: "#334155", Dark: "#CBD5E1"},
+	TextMuted:     lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"},
+	Accent:        lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#60A5FA"},
+	Success:       lipgloss.AdaptiveColor{Light: "#047857", Dark: "#34D399"},
+	Warning:       lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"},
+	Danger:        lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#F87171"},
+	Orange:        lipgloss.AdaptiveColor{Light: "#C2410C", Dark: "#FB923C"},
+	Info:          lipgloss.AdaptiveColor{Light: "#0284C7", Dark: "#38BDF8"},
 }
 
 // Dark 是深色终端背景主题（显式指定时使用）。
 var Dark = &Theme{
-	Bg:            lipgloss.AdaptiveColor{Light: "234", Dark: "234"},
-	Surface:       lipgloss.AdaptiveColor{Light: "235", Dark: "235"},
-	SurfaceHigh:   lipgloss.AdaptiveColor{Light: "236", Dark: "236"},
-	TextPrimary:   lipgloss.AdaptiveColor{Light: "255", Dark: "255"},
-	TextSecondary: lipgloss.AdaptiveColor{Light: "145", Dark: "145"},
-	TextMuted:     lipgloss.AdaptiveColor{Light: "242", Dark: "242"},
-	Accent:        lipgloss.AdaptiveColor{Light: "75", Dark: "75"},
-	Success:       lipgloss.AdaptiveColor{Light: "42", Dark: "42"},
-	Warning:       lipgloss.AdaptiveColor{Light: "220", Dark: "220"},
-	Danger:        lipgloss.AdaptiveColor{Light: "203", Dark: "203"},
-	Orange:        lipgloss.AdaptiveColor{Light: "214", Dark: "214"},
-	Info:          lipgloss.AdaptiveColor{Light: "75", Dark: "75"},
+	Bg:            lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#0F172A"},
+	Surface:       lipgloss.AdaptiveColor{Light: "#111827", Dark: "#111827"},
+	SurfaceHigh:   lipgloss.AdaptiveColor{Light: "#1E3A5F", Dark: "#1E3A5F"},
+	TextPrimary:   lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#E5E7EB"},
+	TextSecondary: lipgloss.AdaptiveColor{Light: "#CBD5E1", Dark: "#CBD5E1"},
+	TextMuted:     lipgloss.AdaptiveColor{Light: "#94A3B8", Dark: "#94A3B8"},
+	Accent:        lipgloss.AdaptiveColor{Light: "#60A5FA", Dark: "#60A5FA"},
+	Success:       lipgloss.AdaptiveColor{Light: "#34D399", Dark: "#34D399"},
+	Warning:       lipgloss.AdaptiveColor{Light: "#FBBF24", Dark: "#FBBF24"},
+	Danger:        lipgloss.AdaptiveColor{Light: "#F87171", Dark: "#F87171"},
+	Orange:        lipgloss.AdaptiveColor{Light: "#FB923C", Dark: "#FB923C"},
+	Info:          lipgloss.AdaptiveColor{Light: "#38BDF8", Dark: "#38BDF8"},
 }
 
 // Current 返回当前终端背景对应的主题。

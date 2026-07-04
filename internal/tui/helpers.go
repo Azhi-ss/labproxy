@@ -15,7 +15,7 @@ func fitLine(line string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return ansi.Truncate(line, width, "…")
 }
 
 func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
@@ -27,6 +27,49 @@ func fitStyledLine(line string, width int, padStyle lipgloss.Style) string {
 		line += padStyle.Render(strings.Repeat(" ", width-visLen))
 	}
 	return line
+}
+
+func alignLine(left, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	left = ansi.Truncate(left, width, "…")
+	leftWidth := ansi.StringWidth(left)
+	if strings.TrimSpace(right) == "" || leftWidth >= width {
+		return fitStyledLine(left, width, lipgloss.NewStyle())
+	}
+	rightWidth := ansi.StringWidth(right)
+	if leftWidth+1+rightWidth > width {
+		remaining := width - leftWidth - 1
+		if remaining <= 0 {
+			return fitStyledLine(left, width, lipgloss.NewStyle())
+		}
+		right = ansi.Truncate(right, remaining, "…")
+		rightWidth = ansi.StringWidth(right)
+	}
+	gap := width - leftWidth - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+	return fitStyledLine(left+strings.Repeat(" ", gap)+right, width, lipgloss.NewStyle())
+}
+
+func (m model) docWidth() int {
+	return max(0, m.width-docStyle.GetHorizontalFrameSize())
+}
+
+func chromeContentWidth(t *theme.Theme, docWidth int) int {
+	return max(0, docWidth-headerStyle(t).GetHorizontalFrameSize()-4)
+}
+
+func renderChromeLine(t *theme.Theme, row string, docWidth int) string {
+	if docWidth <= 0 {
+		return ""
+	}
+	contentWidth := chromeContentWidth(t, docWidth)
+	return docStyle.Width(docWidth).Render(
+		headerStyle(t).Render(fitLine(row, contentWidth)),
+	)
 }
 
 func renderPanelContent(t *theme.Theme, title, subtitle string, rows []string, width, height int) string {
@@ -123,6 +166,16 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func clamp(value, low, high int) int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
 }
 
 func boolLabel(t *theme.Theme, value bool) string {
