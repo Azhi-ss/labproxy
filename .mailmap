@@ -1,0 +1,19 @@
+# Canonical contributor identities for git shortlog and GitHub contributor display.
+#
+# This does not rewrite history; it only normalizes duplicate names/emails.
+
+Azhi-ss <187599815+Azhi-ss@users.noreply.github.com> azhi <yuzeng0921@outlook.com>
+Azhi-ss <187599815+Azhi-ss@users.noreply.github.com> Zorya <187599815+Azhi-ss@users.noreply.github.com>
+Azhi-ss <187599815+Azhi-ss@users.noreply.github.com> Zorya <YuZeng0921@outlook.com>
+
+nelvko <nelvko@qq.com> libm <nelvko@qq.com>
+nelvko <nelvko@qq.com> ね律こ <nelvko@qq.com>
+nelvko <nelvko@qq.com> --global <nelvko@qq.com>
+nelvko <nelvko@qq.com> ね律こ <76961348+nelvko@users.noreply.github.com>
+nelvko <nelvko@qq.com> libm <1413293308@qq.com>
+
+SaladDay <92240037+SaladDay@users.noreply.github.com> saladday <1203511142@qq.com>
+SaladDay <92240037+SaladDay@users.noreply.github.com> SaladDay <1203511142@qq.com>
+
+coolapker <76961348+coolapker@users.noreply.github.com> libm <coolapker@qq.com>
+coolapker <76961348+coolapker@users.noreply.github.com> mojospy <76961348+coolapker@users.noreply.github.com>
