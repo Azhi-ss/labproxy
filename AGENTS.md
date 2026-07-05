@@ -204,7 +204,45 @@ git branch -vv
 4. 运行 `ship` 或按 `ship` 的顺序完成 push/PR 交付。
 5. Push 当前分支。
 6. 如仓库支持 GitHub PR，创建 PR，并在 PR 描述中写清测试结果、风险和未测项。
-7. 只有当任务明确要求 agent 自动合并，且 CI/测试通过、无未解决 review/blocker、工作树干净时，才合并到 `main`。
+7. 验证 PR 分支和 PR checks。PR 分支验证通过只代表“可以合并”，不代表任务完成。
+8. 只有当任务明确要求 agent 自动合并，且 CI/测试通过、无未解决 review/blocker、工作树干净时，才合并到 `main`。
+9. 如果用户要求交付、合并、push 到 GitHub、并入 main、自动完成，除非用户明确说“停在 PR”，agent 必须继续完成 main 合并、push、main CI 和 main 状态验证。
+
+PR 分支验证标准流程：
+
+```bash
+git switch <task-branch>
+git fetch origin
+git status --short --branch
+git merge origin/main --no-edit
+# 如果团队/任务明确要求 rebase，才用：git rebase origin/main
+
+# 按改动范围运行本地验证，例如：
+go test ./...
+bash tests/clashctl_runtime_apply_test.sh
+bash tests/rules_workflow_cli_test.sh
+git diff --check
+
+git push
+gh pr checks --watch
+gh pr view --json mergeable,statusCheckRollup,reviewDecision,headRefOid,baseRefName
+```
+
+PR 分支验证的通过条件：
+
+- 本地工作树干净。
+- 分支已经用最新 `origin/main` 验证过，没有 unresolved merge conflict。
+- 本地相关测试/脚本通过。
+- GitHub PR checks 全绿。
+- Review 已通过或无需外部 review，且没有 unresolved comments/blocker。
+- PR 描述包含测试结果、风险和未测项。
+
+PR 验证完成后的合并闭环：
+
+- 如果用户只是要求“开 PR”或“先验证 PR”，可以停在 PR，并明确报告 PR URL、checks 状态和未合并状态。
+- 如果用户要求“合并到 main”、“push 到 main”、“交付完成”、“agent 自己审核提交合并”或等价目标，不要停在 PR；继续执行 main 合并闭环。
+- 合并后必须验证 `HEAD == main == origin/main`，并确认目标提交同时被本地 `main` 和远端 `origin/main` 包含。
+- main push 触发新的 GitHub Actions 时，必须等待该 main CI 完成。main CI 失败时按 CI 失败流程读取日志、定位、修复、重新 push。
 
 ### CI/CD 结果检查和失败处理
 
@@ -247,9 +285,20 @@ git switch main
 git pull --ff-only origin main
 git merge --ff-only <task-branch>
 git push origin main
+gh run list --branch main --limit 5
+gh run watch <main-run-id> --exit-status
+
+git status --short --branch
+git rev-parse HEAD
+git rev-parse main
+git rev-parse origin/main
+git merge-base --is-ancestor <target-commit> main
+git merge-base --is-ancestor <target-commit> origin/main
 ```
 
 如果 `--ff-only` 失败，说明存在分叉或需要人工级别的历史决策。不要强推、不要 rebase 用户分支、不要用 merge commit 绕过；报告阻塞和分叉点。
+
+也可以使用 GitHub 的 `gh pr merge --rebase --delete-branch` / `--squash` / `--merge`，但仍必须在合并后执行本地和远端 main 验证。不能只因为 GitHub 显示 PR merged 就声称完成。
 
 禁止默认执行：
 
