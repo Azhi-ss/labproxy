@@ -181,6 +181,20 @@ Co-authored-by: OmX <omx@oh-my-codex.dev>
 
 自审发现问题时，继续修复并重新验证。不要在已知失败、已知未复核、或测试未读完的状态下提交。
 
+### 默认自动合并要求
+
+当用户要求更新、提交、push、交付、并入 `main`，或上下文已经明显是在完成当前任务时，agent 必须默认自己完成以下闭环，不要停下来等用户提醒：
+
+1. 自己做 diff 自审，确认只包含当前任务文件。
+2. 跑与改动范围匹配的本地验证；文档-only 至少跑 `git diff --check`，会影响 CI 的改动还要跑本仓库 CI 等价命令。
+3. 提交到任务分支并 push 到 GitHub。
+4. 创建或更新 PR，写清测试结果、风险和未测项。
+5. 等待 GitHub PR checks；失败就读失败日志、修复、重新验证、重新 push。
+6. PR checks 通过且无未解决 blocker 后，自动合并到 `main`。
+7. 合并后验证本地 `main`、`origin/main`、目标提交和 main CI 状态，再报告完成。
+
+只有遇到 destructive/irreversible 操作、外部权限缺失、CI 平台故障、复杂历史分叉、未解决 review blocker，或 live 代理高影响写入缺少备份/验证路径时，才停止并报告阻塞。不要因为“是否要合并”这种已由任务目标隐含授权的普通下一步而询问用户。
+
 ### Push / PR / Merge
 
 Push 时优先推当前任务分支，不要默认推 `main`：

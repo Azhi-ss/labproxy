@@ -1,7 +1,7 @@
 # LabProxy
 
 <p align="center">
-  <a href="./README.en.md">简体中文</a> | <strong>English</strong>
+  <strong>English</strong> | <a href="./README.en.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -11,148 +11,107 @@
   <img src="https://img.shields.io/github/languages/top/Azhi-ss/labproxy" alt="Language">
 </p>
 
-<p align="center"><b>Terminal-native proxy control plane · agent-native · the CLI alternative to clash verge</b></p>
+<p align="center"><b>Terminal-native proxy control plane for humans, scripts, and AI agents.</b></p>
 
----
+<p align="center">
+  <img src="./assets/readme/labproxy-control-plane.png" alt="LabProxy terminal-native proxy control plane" width="900">
+</p>
+
+LabProxy turns a mihomo-based proxy setup into a terminal-first control plane. It installs into `~/.labproxy/`, avoids root-only service assumptions, exposes scriptable JSON output, and keeps day-to-day operations available from CLI, TUI, and web dashboard.
+
+It is based on [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install), with the extra goal of being easy for automation and coding agents to inspect, control, and verify.
 
 ## Why LabProxy?
 
-| Traditional approach | LabProxy |
-|---------|---------|
-| Requires sudo privileges | ✅ Pure user space, no root required |
-| Depends on GUI or systemd | ✅ CLI-only, PID-file based management |
-| Fails to start when ports conflict | ✅ Automatically detects and assigns available ports |
-| Conflicts in multi-user environments | ✅ Fully isolated per-user directory |
-| GUI tools can't be driven by scripts/agents | ✅ Every command supports `--json` for agent control |
-
-**LabProxy** is based on [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install) and positioned as **a terminal-native control plane replacing clash verge**, with **agent-native** as its differentiator:
-
-- **Unprivileged install** — installs into `~/.labproxy/`, works for regular users; auto-detects kernel (bundled zip / brew / PATH / online download, across macOS and Linux)
-- **Smart port handling** — 7890/9090 already taken? It automatically finds available ports
-- **TUI interface** — terminal-native management: group/node selection, connection management (close), batch delay test, live logs, rule editing
-- **Web dashboard** — browser-based management with secret protection
-- **agent-native CLI** — `status`/`proxies`/`connections`/`delay`/`test`/`logs`/`dns`/`profile`/`doctor` all support `--json` with a unified `{ok, data, error}` envelope for scripts and AI agents
-- **Automatic subscription conversion** — built-in subconverter for multiple subscription formats
-
----
+| Traditional proxy setup | LabProxy |
+| --- | --- |
+| Needs sudo or system service access | User-space install under `~/.labproxy/` |
+| GUI-first, hard to automate | CLI/TUI/web plus stable `--json` output |
+| Port conflicts break startup | Detects occupied ports and assigns available ones |
+| Multi-user machines collide on config | Isolated per-user runtime directory |
+| Rule changes are manual and risky | Inspect, fetch, validate, plan, apply, verify, rollback |
 
 ## Quick Start
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/Azhi-ss/labproxy.git && cd labproxy
+git clone https://github.com/Azhi-ss/labproxy.git
+cd labproxy
 bash install.sh
 
-# 2. Configure subscription (required)
 labproxy subscribe https://your-subscription-url
-
-# 3. Start
 labproxy on
-
-# 4. Verify
+labproxy status
 curl -I https://www.google.com
 ```
 
-<details>
-<summary><b>📋 Full Installation Guide</b></summary>
+Requirements:
 
-**Requirements**
-- Shell: `bash` / `zsh` / `fish`
-- Privileges: regular user only, no sudo required
-- Dependency: a valid Clash subscription URL
-
-**Installation flow**
-```bash
-git clone https://github.com/Azhi-ss/labproxy.git
-cd labproxy
-bash install.sh        # installs to ~/.labproxy/ by default
-```
-
-The installer automatically:
-- downloads the correct mihomo binary for your architecture
-- configures shell environment variables
-- sets command aliases
-- detects and assigns available ports
-
-</details>
-
----
+- `bash`, `zsh`, or `fish`
+- A valid Clash-compatible subscription URL
+- No sudo requirement for the default install path
 
 ## Core Commands
 
-```
+```bash
 labproxy on              # start proxy
 labproxy off             # stop proxy
-labproxy status          # show status
-labproxy tui             # open the TUI
+labproxy status          # show runtime status
+labproxy tui             # open the terminal UI
+labproxy ui              # print web dashboard address
 ```
 
-| Command | Description |
-|-----|------|
-| `labproxy port [set <port>\|auto\|status]` | pin a port / auto-assign |
-| `labproxy lan [on\|off\|status]` | LAN access control |
-| `labproxy proxy [on\|off\|status]` | system proxy toggle |
-| `labproxy subscribe [URL]` | set/show subscription |
-| `labproxy update [auto]` | refresh subscription config |
-| `labproxy ui` | show web dashboard address |
-| `labproxy mixin [-e\|-r]` | edit/show config |
+| Command | Purpose |
+| --- | --- |
+| `labproxy port [set <port>|auto|status]` | Pin or auto-assign proxy ports |
+| `labproxy lan [on|off|status]` | Control LAN access |
+| `labproxy proxy [on|off|status]` | Toggle system proxy settings |
+| `labproxy subscribe [URL]` | Set or show subscription URL |
+| `labproxy update [auto]` | Refresh subscription config |
+| `labproxy mixin [-e|-r]` | Edit or show mixin config |
+| `labproxy doctor` | Run local health checks |
 
----
+## Agent-Native JSON
 
-## Agent-Native (Machine-Readable Output)
-
-LabProxy's differentiator is being an **agent-native proxy control plane**: every query/action command supports `--json`, emitting a stable-schema JSON envelope for scripts and AI agents to parse.
-
-### JSON Envelope Schema
-
-All `--json` output follows one envelope:
+Every query/action command that supports automation emits the same envelope with `--json`:
 
 ```json
 {
-  "ok": true,          // whether the operation succeeded
-  "data": <any>,       // payload on success, null on failure
-  "error": ""          // empty on success, error message on failure
+  "ok": true,
+  "data": {},
+  "error": ""
 }
 ```
 
-### Commands Supporting --json
-
-| Command | data field |
-|---------|------------|
-| `labproxy status --json` | `{running, pid, proxy_port, ui_port, dns_port, mode, system_proxy, uptime}` |
-| `labproxy proxies --json` | raw mihomo `/proxies` response |
-| `labproxy connections --json` | raw mihomo `/connections` response |
-| `labproxy connections close <id\|all> --json` | `{closed: "<id\|all>"}` |
-| `labproxy delay <name> --json` | `{name, delay}` (ms; ok=false on failure) |
-| `labproxy test [group] --json` | `{group, results: {name: delay}}` (failed nodes delay=-1) |
-| `labproxy logs -f --json` | one envelope per line `{level, payload}` |
-| `labproxy dns <name> [--type A] --json` | mihomo `/dns/query` response `{Status, Question, Answer}` |
-| `labproxy profile <list\|create\|delete\|use> --json` | `[]` profile names or `{name}` |
-| `labproxy doctor --json` | `{checks: [{name, ok, detail}]}` (per-check ok) |
-
-### Example: agent reads runtime status
+Examples:
 
 ```bash
-$ labproxy status --json
-{"ok":true,"data":{"running":true,"pid":12345,"proxy_port":7890,"ui_port":9090,"dns_port":15353,"mode":"rule","system_proxy":true,"uptime":"01:23:45"},"error":""}
+labproxy status --json
+labproxy proxies --json
+labproxy connections --json
+labproxy delay "Node-A" --json
+labproxy test GLOBAL --json
+labproxy dns example.com --type A --json
+labproxy doctor --json
 ```
 
-### Example: batch delay test and pick the fastest
+Common payloads:
 
-```bash
-$ labproxy test GLOBAL --json
-{"ok":true,"data":{"group":"GLOBAL","results":{"Node-A":50,"Node-B":120,"Node-C":-1}},"error":""}
-```
+| Command | `data` |
+| --- | --- |
+| `status --json` | `{running, pid, proxy_port, ui_port, dns_port, mode, system_proxy, uptime}` |
+| `proxies --json` | Raw mihomo `/proxies` response |
+| `connections --json` | Raw mihomo `/connections` response |
+| `connections close <id|all> --json` | `{closed}` |
+| `delay <name> --json` | `{name, delay}` |
+| `test [group] --json` | `{group, results}` |
+| `logs -f --json` | One JSON envelope per log line |
+| `profile <list|create|delete|use> --json` | Profile names or selected `{name}` |
 
-> `--json` output contains no ANSI color codes; without `--json`, human-readable colored text is emitted.
+`--json` output is ANSI-free. Human-readable commands keep colored terminal output.
 
----
+## Rules Workflow
 
-## Rules Management
-
-### AI and media rule workflow
-
-The workflow commands help test and apply a cautious first batch of external rule providers for AI/developer and media traffic.
+The workflow path is designed to make rule provider changes reviewable before they touch your active mixin:
 
 ```bash
 labproxy rules workflow candidates
@@ -165,7 +124,7 @@ labproxy rules workflow verify --endpoint=http://127.0.0.1:9090 --reload-config=
 labproxy rules workflow rollback --backup=/path/to/mixin.yaml.preapply-20260702-120000
 ```
 
-The first batch maps providers to existing strategy groups:
+Default provider-to-group mapping:
 
 ```text
 github -> Proxies
@@ -177,15 +136,13 @@ disney -> Disney
 telegram -> Telegram
 ```
 
-Run `validate` and `plan` before `apply`. `apply` validates again and refuses to write if the target groups are unknown. Keep local override rules at the top of `mixin.yaml`. For rollback, use the `backup=` path printed by `apply`; the path above is only a placeholder matching the generated `.preapply-*` backup name pattern. The installed `labproxy` wrapper injects the active mixin path automatically; when running `labproxy-tui` directly, pass `--mixin-config /Users/azhi/.labproxy/mixin.yaml` after `rules`.
+Run `validate` and `plan` before `apply`. `apply` validates again, refuses unknown strategy groups, preserves local override rules above generated `RULE-SET` entries, and prints the backup path used for rollback.
 
-Hugging Face stays as inline local rules for now because the previously proposed blackmatrix7 HuggingFace provider URL currently returns 404.
+When calling the installed `labproxy` wrapper, the active mixin path is injected automatically. When running the raw `labproxy-tui` binary directly, pass `--mixin-config /Users/azhi/.labproxy/mixin.yaml` after `rules`.
+
+## Direct Rules Commands
 
 ```bash
-# Open the rules manager modal by pressing R inside the TUI
-labproxy tui  # press R
-
-# CLI subcommands
 labproxy rules list
 labproxy rules add --type=DOMAIN-SUFFIX --payload=example.com --proxy=PROXY
 labproxy rules disable 0
@@ -198,47 +155,45 @@ labproxy rules export --out=./my-rules.yaml
 labproxy rules reset -y
 labproxy rules providers list
 labproxy rules providers add --name=google --type=http --behavior=domain \
-    --url=https://example.com/g.yaml --path=./providers/google.yaml --interval=86400
+  --url=https://example.com/g.yaml --path=./providers/google.yaml --interval=86400
 labproxy rules providers refresh google
 ```
 
 Supported rule types: `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `IP-CIDR`, `IP-CIDR6`, `IP-ASN`, `SRC-IP-CIDR`, `SRC-PORT`, `GEOIP`, `GEOSITE`, `RULE-SET`, `MATCH`, `MATCH-SRC`.
 
----
-
-## TUI Interface
+## TUI
 
 ```bash
 labproxy tui
 ```
 
-**Hotkeys**
+The TUI has five persistent views:
 
-The TUI uses a Clash-style left nav with five persistent views:
+| Key | View | Main actions |
+| --- | --- | --- |
+| `1` | Proxies | Search, delay test, switch node |
+| `2` | Connections | Close one or all connections |
+| `3` | Logs | Filter and change log level |
+| `4` | Rules | Add, edit, delete rules |
+| `5` | Config | Toggle runtime settings |
 
-| Key | View | Actions |
-|-----|------|---------|
-| `1` | Proxies | `/` search, `t` test, `h/l` focus, `j/k` move, `Enter` switch |
-| `2` | Connections | `j/k` move, `d` close, `D` close all |
-| `3` | Logs | `/` filter, `l` level |
-| `4` | Rules | `a` add, `Enter` edit, `d` delete |
-| `5` | Config | `j/k` move, `Enter` toggle |
+Global keys: `Tab` cycle focus, `r` refresh, `?` help, `q` quit.
 
-Global: `1-5` switch view, `Tab` cycle, `r` refresh, `?` help, `q` quit.
+Maintainer note: after changing TUI source code, run:
 
-> **Maintainer note**: after changing TUI source code, run `VERSION=dev bash scripts/build-tui.sh` to regenerate prebuilt archives.
-
----
+```bash
+VERSION=dev bash scripts/build-tui.sh
+```
 
 ## Project Layout
 
-```
+```text
 labproxy/                          ~/.labproxy/
 ├── cmd/labproxy-tui/              ├── bin/
-├── internal/                      │   ├── mihomo              # proxy core
-│   ├── config/                    │   ├── labproxy-tui        # TUI
-│   ├── proxy/                     │   ├── subconverter        # subscription conversion
-│   └── tui/                       │   └── yq                  # YAML utility
+├── internal/                      │   ├── mihomo
+│   ├── config/                    │   ├── labproxy-tui
+│   ├── proxy/                     │   ├── subconverter
+│   └── tui/                       │   └── yq
 ├── scripts/                       ├── config/
 │   ├── proxyctl.sh                │   ├── mixin.yaml
 │   ├── common.sh                  │   └── ports.conf
@@ -249,39 +204,31 @@ labproxy/                          ~/.labproxy/
 └── README.md
 ```
 
----
-
 ## FAQ
 
-**Q: Will the proxy stop after my SSH session disconnects?**  
-A: No. It runs in the background via `nohup`, independent of your SSH session.
+**Will the proxy stop after my SSH session disconnects?**
+No. LabProxy runs the proxy core in the background, independent of the SSH session.
 
-**Q: How do I pin the proxy port?**  
-A: Use `labproxy port set 7890`. If that port is occupied, LabProxy will prompt/handle reassignment.
+**How do I pin the proxy port?**
+Use `labproxy port set 7890`. If the port is occupied, LabProxy handles reassignment.
 
-**Q: The web dashboard does not open. What should I check?**  
-A: Make sure the management port is allowed by your firewall. The default is 9090, but it may change if there is a conflict.
+**The web dashboard does not open. What should I check?**
+Check the management port. The default is 9090, but it may change if there is a conflict.
 
-**Q: How can other devices on my LAN use it?**  
-A: Run `labproxy lan on`, then configure those devices to use `http://<your-host-ip>:<port>` as the proxy.
-
----
+**How can other devices on my LAN use it?**
+Run `labproxy lan on`, then configure those devices to use `http://<your-host-ip>:<port>`.
 
 ## Related Projects
 
-- [mihomo](https://github.com/MetaCubeX/mihomo) — proxy core
-- [subconverter](https://github.com/tindy2013/subconverter) — subscription conversion
-- [zashboard](https://github.com/Zephyruso/zashboard) — Web UI
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) — TUI framework
-
-Originally derived from [clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install).
+- [mihomo](https://github.com/MetaCubeX/mihomo) - proxy core
+- [subconverter](https://github.com/tindy2013/subconverter) - subscription conversion
+- [zashboard](https://github.com/Zephyruso/zashboard) - web dashboard
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 
 ## License
 
 [MIT License](LICENSE)
 
----
-
 <p align="center">
-  If this tool helps you, please give it a ⭐ <a href="https://github.com/Azhi-ss/labproxy">Star</a>
+  If this tool helps you, please give it a <a href="https://github.com/Azhi-ss/labproxy">star on GitHub</a>.
 </p>
